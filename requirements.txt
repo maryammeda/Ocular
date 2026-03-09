@@ -1,0 +1,10 @@
+streamlit
+streamlit-lottie
+pytesseract
+pdfplumber
+python-docx
+Pillow
+watchdog
+fastapi
+uvicorn
+pydantic
