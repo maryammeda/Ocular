@@ -231,22 +231,32 @@ function App() {
     } finally { setScanning(false) }
   }
 
-  // ── Quick scan (pick user folder → Desktop/Downloads/Documents) ──
+  // ── Quick scan (pick Desktop, Downloads, Documents one by one) ──
   const handleQuickScan = async () => {
     if (!supportsFS) return notify('Please use Chrome or Edge to scan folders.', 'error')
-    try {
-      const dirHandle = await window.showDirectoryPicker({ mode: 'read' })
-      setScanning(true); setScanCount(0); setScanFile(''); setScanLabel('Quick scanning your folders')
-      const { totalCount, scanned } = await engine.quickScan(dirHandle, onProgress)
-      setIndexedCount(engine.count)
-      if (scanned.length === 0) {
-        notify('No Desktop, Downloads, or Documents found. Select your user folder.', 'error')
-      } else {
-        notify(`Indexed ${totalCount} files from ${scanned.join(', ')}`)
+    const folders = ['Desktop', 'Downloads', 'Documents']
+    let totalCount = 0
+    const scanned = []
+
+    for (const folder of folders) {
+      try {
+        notify(`Select your ${folder} folder`, 'success')
+        const dirHandle = await window.showDirectoryPicker({ mode: 'read' })
+        setScanning(true); setScanCount(0); setScanFile(''); setScanLabel(`Scanning ${dirHandle.name}`)
+        const count = await engine.scanDirectory(dirHandle, onProgress)
+        totalCount += count
+        scanned.push(dirHandle.name)
+      } catch (e) {
+        if (e.name === 'AbortError') continue // user skipped this folder
+        notify(e.message, 'error')
       }
-    } catch (e) {
-      if (e.name !== 'AbortError') notify(e.message, 'error')
-    } finally { setScanning(false) }
+    }
+
+    setScanning(false)
+    setIndexedCount(engine.count)
+    if (scanned.length > 0) {
+      notify(`Indexed ${totalCount} files from ${scanned.join(', ')}`)
+    }
   }
 
   if (!ready) {
