@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Search, FolderSearch, Upload, Loader2, FileText, FileCode, FileImage, File, CheckCircle2, AlertCircle, X, Orbit, Scan, Clock, Trash2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { engine } from './engine'
+import { authorize, listFiles, downloadFile } from './gdrive'
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
 const fileIconMap = {
   py: FileCode, js: FileCode, jsx: FileCode, ts: FileCode, tsx: FileCode,
@@ -233,6 +236,60 @@ function App() {
     } finally { setScanning(false) }
   }
 
+  // ── Google Drive ─────────────────────────────────────────
+  const handleGoogleDrive = async () => {
+    if (!GOOGLE_CLIENT_ID) return notify('Google Drive not configured.', 'error')
+    try {
+      const token = await authorize(GOOGLE_CLIENT_ID)
+      setScanning(true); setScanCount(0); setScanFile(''); setScanLabel('Fetching files from Google Drive')
+
+      const files = await listFiles(token)
+      setScanLabel(`Indexing ${files.length} files from Google Drive`)
+
+      let count = 0
+      for (const file of files) {
+        try {
+          const result = await downloadFile(token, file)
+          let content = ''
+          let isImage = false
+          let imageData = null
+
+          if (result.type === 'text') {
+            content = result.data
+          } else if (result.type === 'image') {
+            isImage = true
+            imageData = result.data
+          } else if (result.type === 'binary') {
+            if (result.mimeType === 'application/pdf') {
+              content = await engine.extractPDFFromBuffer(result.data)
+            } else {
+              content = await engine.extractDOCXFromBuffer(result.data)
+            }
+          }
+
+          await engine.addDocument({
+            filename: file.name,
+            filepath: `Google Drive/${file.name}`,
+            content,
+            filetype: result.filetype,
+            isImage,
+            imageData,
+          })
+
+          count++
+          onProgress(count, file.name)
+        } catch (e) {
+          console.warn(`Skipped ${file.name}:`, e.message)
+        }
+      }
+
+      setIndexedCount(engine.count)
+      notify(`Indexed ${count} files from Google Drive`)
+    } catch (e) {
+      if (!e.message?.includes('popup_closed')) notify(e.message, 'error')
+    } finally { setScanning(false) }
+  }
+
   // ── Drag & drop ──────────────────────────────────────────
   const handleDragEnter = (e) => {
     e.preventDefault(); dragCounter.current++; setDragging(true)
@@ -394,9 +451,11 @@ function App() {
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/70 hover:bg-white/[0.1] hover:border-white/[0.14] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_12px_rgba(255,255,255,0.04)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <FolderSearch size={14} /> Index folder
           </button>
-          <div className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/30 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-            <Upload size={14} /> or drag & drop files here
-          </div>
+          <button onClick={handleGoogleDrive} disabled={scanning}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/70 hover:bg-white/[0.1] hover:border-white/[0.14] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_12px_rgba(255,255,255,0.04)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_10px_rgba(255,255,255,0.02)]">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 19.5h20L12 2z"/><path d="M2 19.5l5-8.5"/><path d="M22 19.5l-5-8.5"/><path d="M7 11h10"/></svg>
+            Google Drive
+          </button>
         </motion.div>
 
         {/* Browser support warning */}
@@ -448,16 +507,18 @@ function App() {
               <p className="text-white/25 text-sm mb-6">
                 {indexedCount > 0
                   ? `${indexedCount} files ready — start searching`
-                  : 'Select a folder or drag files to get started'}
+                  : 'Index a folder or connect Google Drive to get started'}
               </p>
               <div className="flex items-center justify-center gap-3">
                 <button onClick={handleScan} disabled={!supportsFS}
                   className="text-xs bg-white/[0.06] border border-white/[0.08] rounded-xl px-4 py-2.5 text-white/35 hover:text-white/60 hover:bg-white/[0.1] hover:border-white/[0.14] backdrop-blur-xl transition-all flex items-center gap-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] disabled:opacity-25">
                   <FolderSearch size={12} /> Index a folder
                 </button>
-                <div className="text-xs text-white/20 flex items-center gap-2">
-                  <Upload size={12} /> or drag & drop
-                </div>
+                <button onClick={handleGoogleDrive}
+                  className="text-xs bg-white/[0.06] border border-white/[0.08] rounded-xl px-4 py-2.5 text-white/35 hover:text-white/60 hover:bg-white/[0.1] hover:border-white/[0.14] backdrop-blur-xl transition-all flex items-center gap-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 19.5h20L12 2z"/><path d="M2 19.5l5-8.5"/><path d="M22 19.5l-5-8.5"/><path d="M7 11h10"/></svg>
+                  Google Drive
+                </button>
               </div>
             </motion.div>
           )}
