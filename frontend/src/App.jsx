@@ -231,28 +231,31 @@ function App() {
     } finally { setScanning(false) }
   }
 
-  // ── Quick scan (pick Desktop, Downloads, Documents one by one) ──
+  // ── Quick scan (pick multiple folders back-to-back) ──
   const handleQuickScan = async () => {
     if (!supportsFS) return notify('Please use Chrome or Edge to scan folders.', 'error')
-    const folders = ['Desktop', 'Downloads', 'Documents']
     let totalCount = 0
     const scanned = []
 
-    for (const folder of folders) {
+    while (true) {
+      let dirHandle
       try {
-        notify(`Select your ${folder} folder`, 'success')
-        const dirHandle = await window.showDirectoryPicker({ mode: 'read' })
+        dirHandle = await window.showDirectoryPicker({ mode: 'read' })
+      } catch {
+        break // user clicked Cancel — done picking
+      }
+
+      try {
         setScanning(true); setScanCount(0); setScanFile(''); setScanLabel(`Scanning ${dirHandle.name}`)
         const count = await engine.scanDirectory(dirHandle, onProgress)
         totalCount += count
         scanned.push(dirHandle.name)
       } catch (e) {
-        if (e.name === 'AbortError') continue // user skipped this folder
         notify(e.message, 'error')
       }
+      setScanning(false)
     }
 
-    setScanning(false)
     setIndexedCount(engine.count)
     if (scanned.length > 0) {
       notify(`Indexed ${totalCount} files from ${scanned.join(', ')}`)
