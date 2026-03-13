@@ -232,6 +232,42 @@ class SearchEngine {
     await new Promise(r => { tx.oncomplete = r })
   }
 
+  // ── Public methods for external integrations ─────────────
+  async addDocument({ filename, filepath, content, filetype, isImage = false, imageData = null }) {
+    const doc = {
+      id: filepath,
+      filename,
+      filepath,
+      content: content || '',
+      filetype,
+      isImage,
+      imageData,
+    }
+    const idx = this.documents.findIndex(d => d.id === doc.id)
+    if (idx >= 0) this.documents[idx] = doc
+    else this.documents.push(doc)
+    await this._save(doc)
+  }
+
+  async extractPDFFromBuffer(arrayBuffer) {
+    const pdfjsLib = await getPdfJs()
+    const data = new Uint8Array(arrayBuffer)
+    const pdf = await pdfjsLib.getDocument({ data }).promise
+    const pages = []
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i)
+      const tc = await page.getTextContent()
+      pages.push(tc.items.map(it => it.str).join(' '))
+    }
+    return pages.join('\n').trim()
+  }
+
+  async extractDOCXFromBuffer(arrayBuffer) {
+    const mammoth = await getMammoth()
+    const result = await mammoth.extractRawText({ arrayBuffer })
+    return result.value
+  }
+
   // ── Process dropped items (files & folders) ──────────────
   async scanDroppedItems(items, onProgress) {
     let count = 0
