@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Search, FolderSearch, Brain, Loader2, FileText, FileCode, FileImage, File, CheckCircle2, AlertCircle, X, Orbit, Scan, Zap, Clock, Trash2 } from 'lucide-react'
+import { Search, FolderSearch, Upload, Loader2, FileText, FileCode, FileImage, File, CheckCircle2, AlertCircle, X, Orbit, Scan, Clock, Trash2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { engine } from './engine'
 
@@ -179,8 +179,10 @@ function App() {
   const [showHistory, setShowHistory] = useState(false)
   const [indexedCount, setIndexedCount] = useState(0)
   const [ready, setReady] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const inputRef = useRef(null)
   const historyRef = useRef(null)
+  const dragCounter = useRef(0)
 
   const notify = (msg, type = 'success') => setToast({ message: msg, type })
 
@@ -231,35 +233,26 @@ function App() {
     } finally { setScanning(false) }
   }
 
-  // ── Quick scan (pick multiple folders back-to-back) ──
-  const handleQuickScan = async () => {
-    if (!supportsFS) return notify('Please use Chrome or Edge to scan folders.', 'error')
-    let totalCount = 0
-    const scanned = []
-
-    while (true) {
-      let dirHandle
-      try {
-        dirHandle = await window.showDirectoryPicker({ mode: 'read' })
-      } catch {
-        break // user clicked Cancel — done picking
-      }
-
-      try {
-        setScanning(true); setScanCount(0); setScanFile(''); setScanLabel(`Scanning ${dirHandle.name}`)
-        const count = await engine.scanDirectory(dirHandle, onProgress)
-        totalCount += count
-        scanned.push(dirHandle.name)
-      } catch (e) {
-        notify(e.message, 'error')
-      }
-      setScanning(false)
-    }
-
-    setIndexedCount(engine.count)
-    if (scanned.length > 0) {
-      notify(`Indexed ${totalCount} files from ${scanned.join(', ')}`)
-    }
+  // ── Drag & drop ──────────────────────────────────────────
+  const handleDragEnter = (e) => {
+    e.preventDefault(); dragCounter.current++; setDragging(true)
+  }
+  const handleDragLeave = (e) => {
+    e.preventDefault(); dragCounter.current--; if (dragCounter.current === 0) setDragging(false)
+  }
+  const handleDragOver = (e) => { e.preventDefault() }
+  const handleDrop = async (e) => {
+    e.preventDefault(); dragCounter.current = 0; setDragging(false)
+    const items = [...e.dataTransfer.items]
+    if (!items.length) return
+    setScanning(true); setScanCount(0); setScanFile(''); setScanLabel('Scanning dropped files')
+    try {
+      const count = await engine.scanDroppedItems(items, onProgress)
+      setIndexedCount(engine.count)
+      notify(`Done — ${count} files indexed`)
+    } catch (err) {
+      notify(err.message, 'error')
+    } finally { setScanning(false) }
   }
 
   if (!ready) {
@@ -271,7 +264,32 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-white/20 relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-white/20 relative overflow-x-hidden"
+      onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
+
+      {/* Drop overlay */}
+      <AnimatePresence>
+        {dragging && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-2xl flex items-center justify-center pointer-events-none">
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+              className="flex flex-col items-center gap-5">
+              <div className="relative">
+                <motion.div className="w-32 h-32 rounded-3xl border-2 border-dashed border-white/30 flex items-center justify-center"
+                  animate={{ borderColor: ['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.5)', 'rgba(255,255,255,0.2)'] }}
+                  transition={{ duration: 2, repeat: Infinity }}>
+                  <Upload className="text-white/60" size={36} />
+                </motion.div>
+                <div className="absolute -inset-8 bg-white/5 rounded-full blur-3xl" />
+              </div>
+              <div className="text-center">
+                <p className="text-white/80 text-lg font-medium">Drop to scan</p>
+                <p className="text-white/30 text-sm mt-1">Files and folders will be indexed</p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Ambient lighting */}
       <div className="fixed top-[-300px] left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full pointer-events-none"
@@ -376,10 +394,9 @@ function App() {
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/70 hover:bg-white/[0.1] hover:border-white/[0.14] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_12px_rgba(255,255,255,0.04)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <FolderSearch size={14} /> Index folder
           </button>
-          <button onClick={handleQuickScan} disabled={scanning}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/70 hover:bg-white/[0.1] hover:border-white/[0.14] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_12px_rgba(255,255,255,0.04)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_10px_rgba(255,255,255,0.02)]">
-            <Brain size={14} /> Quick scan
-          </button>
+          <div className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/30 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+            <Upload size={14} /> or drag & drop files here
+          </div>
         </motion.div>
 
         {/* Browser support warning */}
@@ -431,17 +448,16 @@ function App() {
               <p className="text-white/25 text-sm mb-6">
                 {indexedCount > 0
                   ? `${indexedCount} files ready — start searching`
-                  : 'Select a folder to index, then search for anything'}
+                  : 'Select a folder or drag files to get started'}
               </p>
               <div className="flex items-center justify-center gap-3">
                 <button onClick={handleScan} disabled={!supportsFS}
                   className="text-xs bg-white/[0.06] border border-white/[0.08] rounded-xl px-4 py-2.5 text-white/35 hover:text-white/60 hover:bg-white/[0.1] hover:border-white/[0.14] backdrop-blur-xl transition-all flex items-center gap-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] disabled:opacity-25">
                   <FolderSearch size={12} /> Index a folder
                 </button>
-                <button onClick={handleQuickScan} disabled={!supportsFS}
-                  className="text-xs bg-white/[0.06] border border-white/[0.08] rounded-xl px-4 py-2.5 text-white/35 hover:text-white/60 hover:bg-white/[0.1] hover:border-white/[0.14] backdrop-blur-xl transition-all flex items-center gap-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] disabled:opacity-25">
-                  <Brain size={12} /> Quick scan
-                </button>
+                <div className="text-xs text-white/20 flex items-center gap-2">
+                  <Upload size={12} /> or drag & drop
+                </div>
               </div>
             </motion.div>
           )}

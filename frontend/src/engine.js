@@ -231,6 +231,54 @@ class SearchEngine {
     tx.objectStore(STORE_NAME).clear()
     await new Promise(r => { tx.oncomplete = r })
   }
+
+  // ── Process dropped items (files & folders) ──────────────
+  async scanDroppedItems(items, onProgress) {
+    let count = 0
+    for (const item of items) {
+      try {
+        const handle = await item.getAsFileSystemHandle()
+        if (!handle) continue
+        if (handle.kind === 'directory') {
+          count += await this.scanDirectory(handle, (c, f) => {
+            onProgress?.(count + c, f)
+          })
+        } else {
+          // Single file
+          const dotIdx = handle.name.lastIndexOf('.')
+          if (dotIdx === -1) continue
+          const ext = handle.name.slice(dotIdx).toLowerCase()
+          const type = SUPPORTED[ext]
+          if (!type) continue
+
+          const file = await handle.getFile()
+          const content = type !== 'image' ? await this._extractContent(file, type) : ''
+          const isImage = type === 'image'
+          let imageData = null
+          if (isImage && file.size < 10 * 1024 * 1024) {
+            imageData = await fileToDataURL(file)
+          }
+
+          const filepath = `dropped/${handle.name}`
+          const doc = {
+            id: filepath, filename: handle.name, filepath,
+            content: content || '', filetype: ext.replace('.', '').toUpperCase(),
+            isImage, imageData,
+          }
+
+          const idx = this.documents.findIndex(d => d.id === doc.id)
+          if (idx >= 0) this.documents[idx] = doc
+          else this.documents.push(doc)
+          await this._save(doc)
+          count++
+          onProgress?.(count, handle.name)
+        }
+      } catch (e) {
+        console.warn('Drop item skipped:', e.message)
+      }
+    }
+    return count
+  }
 }
 
 function fileToDataURL(file) {
