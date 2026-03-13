@@ -1,12 +1,23 @@
 import os
-from fastapi import FastAPI, BackgroundTasks
+import mimetypes
+import traceback
+from concurrent.futures import ThreadPoolExecutor
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from backend.db import DocumentDB
 from backend.crawler import FileCrawler
+from backend.watcher import FileWatcher
 
 app = FastAPI(title="Neural Search API")
+
+# Thread pool so crawl doesn't block the server
+_pool = ThreadPoolExecutor(max_workers=2)
+
+# File watcher — auto-reindexes on file changes
+_watcher = FileWatcher()
 
 # Enable CORS for React frontend
 app.add_middleware(
@@ -18,24 +29,46 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def startup():
+    _watcher.start()
+
+
+@app.on_event("shutdown")
+def shutdown():
+    _watcher.stop()
+
+
 class ScanRequest(BaseModel):
     path: str
     deep_scan: bool = True
 
 
+def _run_scan(path: str, deep_scan: bool):
+    crawler = FileCrawler(path, deep_scan=deep_scan)
+    return crawler.crawl()
+
+
 @app.post("/scan")
-def scan(request: ScanRequest):
-    if not os.path.isdir(request.path):
-        return {"status": "error", "message": "Invalid directory path."}
-    crawler = FileCrawler(request.path, deep_scan=request.deep_scan)
-    results = crawler.crawl()
-    return {"status": "Scan Complete", "files_indexed": len(results)}
+async def scan(request: ScanRequest):
+    try:
+        if not os.path.isdir(request.path):
+            return {"status": "error", "message": f"Invalid directory path: {request.path}"}
+        import asyncio
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(_pool, _run_scan, request.path, request.deep_scan)
+        # Auto-watch the scanned folder
+        _watcher.watch(request.path)
+        return {"status": "Scan Complete", "files_indexed": len(results)}
+    except Exception as e:
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
 
 
 @app.get("/search")
-def search(q: str):
+def search(query: str):
     db = DocumentDB()
-    results = db.search(q)
+    results = db.search(query)
     db.close()
     return [
         {
@@ -43,31 +76,73 @@ def search(q: str):
             "filepath": row[1],
             "snippet": row[2],
             "filetype": row[3],
+            "matches": row[4],
         }
         for row in results
     ]
 
 
 @app.post("/auto-scan")
-def auto_scan(deep_scan: bool = False):
-    home = os.path.expanduser("~")
-    folders = ["Desktop", "Downloads", "Documents"]
-    total_indexed = 0
-    scanned = []
+async def auto_scan(deep_scan: bool = False):
+    try:
+        import asyncio
+        home = os.path.expanduser("~")
+        folders = ["Desktop", "Downloads", "Documents"]
+        total_indexed = 0
+        scanned = []
+        loop = asyncio.get_event_loop()
 
-    for folder in folders:
-        folder_path = os.path.join(home, folder)
-        if os.path.isdir(folder_path):
-            crawler = FileCrawler(folder_path, deep_scan=deep_scan)
-            results = crawler.crawl()
-            total_indexed += len(results)
-            scanned.append(folder)
+        for folder in folders:
+            folder_path = os.path.join(home, folder)
+            if os.path.isdir(folder_path):
+                results = await loop.run_in_executor(_pool, _run_scan, folder_path, deep_scan)
+                total_indexed += len(results)
+                scanned.append(folder)
+                # Auto-watch scanned folders
+                _watcher.watch(folder_path)
 
+        return {
+            "status": "Scan Complete",
+            "folders_scanned": scanned,
+            "files_indexed": total_indexed,
+        }
+    except Exception as e:
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
+
+
+@app.get("/preview")
+def preview(filepath: str):
+    db = DocumentDB()
+    row = db.get_document(filepath)
+    db.close()
+    if not row:
+        return {"status": "error", "message": "Document not found"}
+    filename, filepath, content, filetype = row
+    ext = os.path.splitext(filename)[1].lower()
+    is_image = ext in ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg')
     return {
-        "status": "Scan Complete",
-        "folders_scanned": scanned,
-        "files_indexed": total_indexed,
+        "filename": filename,
+        "filepath": filepath,
+        "content": content if not is_image else None,
+        "filetype": filetype,
+        "is_image": is_image,
+        "image_url": f"/file?path={filepath}" if is_image else None,
     }
+
+
+@app.get("/file")
+def serve_file(path: str):
+    path = os.path.normpath(path)
+    if not os.path.isfile(path):
+        return {"status": "error", "message": "File not found"}
+    media_type, _ = mimetypes.guess_type(path)
+    return FileResponse(path, media_type=media_type or "application/octet-stream")
+
+
+@app.get("/watched")
+def get_watched():
+    return {"folders": _watcher.get_watched()}
 
 
 if __name__ == "__main__":
