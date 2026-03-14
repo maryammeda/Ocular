@@ -20,7 +20,7 @@ async function getPdfJs() {
   if (!_pdfjsLib) {
     _pdfjsLib = await import('pdfjs-dist')
     _pdfjsLib.GlobalWorkerOptions.workerSrc =
-      `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${_pdfjsLib.version}/pdf.worker.min.mjs`
+      new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).href
   }
   return _pdfjsLib
 }
