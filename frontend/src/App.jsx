@@ -416,11 +416,11 @@ function App() {
       <AnimatePresence>{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}</AnimatePresence>
       <AnimatePresence>{scanning && <ScanOverlay label={scanLabel} fileCount={scanCount} currentFile={scanFile} />}</AnimatePresence>
 
-      <div className="relative z-10 max-w-2xl mx-auto px-6 pt-28 pb-24">
+      <div className="relative z-10 max-w-2xl mx-auto px-6 pt-16 pb-16">
 
         {/* Header */}
         <motion.header initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }} className="text-center mb-14">
+          transition={{ duration: 0.8 }} className="text-center mb-8">
           <div className="inline-flex items-center gap-3.5 mb-4">
             <div className="relative">
               <motion.div
@@ -508,7 +508,7 @@ function App() {
         </motion.div>
 
         {/* Buttons */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="flex gap-3 mb-12">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="flex gap-3 mb-8">
           <button onClick={handleScan} disabled={scanning}
             className="group/btn relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/80 hover:bg-white/[0.1] hover:border-white/[0.18] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_20px_rgba(255,255,255,0.06),0_0_40px_rgba(255,255,255,0.02)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <FolderSearch size={14} /> Index folder
@@ -552,7 +552,7 @@ function App() {
           </AnimatePresence>
 
           {hasSearched && !results.length && !searching && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-24">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-14">
               <div className="relative inline-block mb-4">
                 <Search size={28} className="text-white/15" strokeWidth={1.5} />
                 <div className="absolute -inset-4 bg-white/5 rounded-full blur-2xl" />
@@ -563,7 +563,7 @@ function App() {
           )}
 
           {!hasSearched && !results.length && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} className="text-center py-24">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} className="text-center py-14">
               <div className="relative inline-block mb-5">
                 <motion.div
                   animate={{ rotate: 360 }}
