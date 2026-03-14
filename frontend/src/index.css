@@ -16,3 +16,29 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+@keyframes sweep {
+  0%   { transform: translate(-50%, -50%) rotate(0deg); }
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+.light-sweep {
+  position: fixed;
+  top: 45%;
+  left: 50%;
+  width: 100vmax;
+  height: 100vmax;
+  pointer-events: none;
+  animation: sweep 20s linear infinite;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 310deg,
+    rgba(255,255,255,0.04) 340deg,
+    rgba(255,255,255,0.08) 355deg,
+    rgba(255,255,255,0.04) 370deg,
+    transparent 400deg
+  );
+  mask-image: radial-gradient(circle, black 0%, transparent 55%);
+  -webkit-mask-image: radial-gradient(circle, black 0%, transparent 55%);
+}
