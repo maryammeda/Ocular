@@ -405,25 +405,13 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Ambient lighting */}
-      <div className="fixed top-[-300px] left-1/2 -translate-x-1/2 w-[1100px] h-[700px] rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(ellipse, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.03) 40%, transparent 70%)' }} />
-      <div className="fixed bottom-[-200px] left-[-100px] w-[600px] h-[600px] rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 60%)' }} />
-      <div className="fixed top-[40%] right-[-150px] w-[500px] h-[500px] rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 60%)' }} />
-
-      {/* Center hero glow */}
-      <motion.div
-        className="fixed top-[20%] left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full pointer-events-none"
-        animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.05, 1] }}
-        transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-        style={{ background: 'radial-gradient(ellipse, rgba(255,255,255,0.06) 0%, transparent 60%)' }} />
+      {/* Sweeping light */}
+      <div className="light-sweep" />
 
       {/* Top edge glow */}
-      <div className="fixed top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/30 to-transparent z-30" />
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[150px] pointer-events-none z-20"
-        style={{ background: 'radial-gradient(ellipse at top, rgba(255,255,255,0.08) 0%, transparent 70%)' }} />
+      <div className="fixed top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/25 to-transparent z-30" />
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[120px] pointer-events-none z-20"
+        style={{ background: 'radial-gradient(ellipse at top, rgba(255,255,255,0.06) 0%, transparent 70%)' }} />
 
       <AnimatePresence>{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}</AnimatePresence>
       <AnimatePresence>{scanning && <ScanOverlay label={scanLabel} fileCount={scanCount} currentFile={scanFile} />}</AnimatePresence>
