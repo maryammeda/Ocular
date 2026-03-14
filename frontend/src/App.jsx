@@ -36,7 +36,7 @@ function Toast({ message, type, onClose }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-      className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-2xl bg-white/10 backdrop-blur-2xl border border-white/15 shadow-[0_8px_40px_rgba(0,0,0,0.3)]"
+      className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-2xl bg-white/10 backdrop-blur-2xl border border-white/15 shadow-[0_8px_40px_rgba(0,0,0,0.3),0_0_30px_rgba(255,255,255,0.05)]"
     >
       {type === 'success' ? <CheckCircle2 size={16} className="text-white" /> : <AlertCircle size={16} className="text-white/50" />}
       <span className="text-sm text-white/90">{message}</span>
@@ -51,12 +51,16 @@ function ScanOverlay({ label, fileCount, currentFile }) {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-40 bg-black/70 backdrop-blur-xl flex items-center justify-center">
       <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
-        className="bg-white/10 backdrop-blur-2xl border border-white/15 rounded-3xl p-12 flex flex-col items-center gap-6 shadow-[0_20px_80px_rgba(0,0,0,0.4)]">
+        className="relative bg-white/10 backdrop-blur-2xl border border-white/15 rounded-3xl p-12 flex flex-col items-center gap-6 shadow-[0_20px_80px_rgba(0,0,0,0.4),0_0_100px_rgba(255,255,255,0.05)]">
+        <div className="absolute -inset-4 rounded-[2rem] bg-white/[0.04] blur-3xl pointer-events-none" />
         <div className="relative flex items-center justify-center">
-          <motion.div className="absolute w-20 h-20 rounded-full border border-white/20"
-            animate={{ scale: [1, 1.5, 1], opacity: [0.3, 0, 0.3] }}
+          <motion.div className="absolute w-20 h-20 rounded-full border border-white/25"
+            animate={{ scale: [1, 1.8, 1], opacity: [0.4, 0, 0.4] }}
             transition={{ duration: 2, repeat: Infinity }} />
-          <Scan className="text-white" size={24} />
+          <motion.div className="absolute w-16 h-16 rounded-full border border-white/15"
+            animate={{ scale: [1, 1.5, 1], opacity: [0.3, 0, 0.3] }}
+            transition={{ duration: 2, repeat: Infinity, delay: 0.5 }} />
+          <Scan className="text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]" size={24} />
         </div>
         <div className="text-center">
           <p className="text-white font-medium text-lg">{label}</p>
@@ -105,10 +109,12 @@ function ResultCard({ item, index, searchQuery }) {
       initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04, duration: 0.4 }}
       onMouseEnter={onEnter} onMouseLeave={onLeave}
-      className="group relative rounded-2xl p-5 bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.16] hover:shadow-[0_4px_40px_rgba(255,255,255,0.04)] backdrop-blur-sm transition-all duration-400 cursor-default"
+      className="group relative rounded-2xl p-5 bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.2] hover:shadow-[0_4px_40px_rgba(255,255,255,0.06),0_0_80px_rgba(255,255,255,0.02)] backdrop-blur-sm transition-all duration-400 cursor-default"
     >
       {/* Top shine */}
-      <div className="absolute top-0 left-[15%] right-[15%] h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+      <div className="absolute top-0 left-[10%] right-[10%] h-[1px] bg-gradient-to-r from-transparent via-white/15 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+      {/* Card glow */}
+      <div className="absolute -inset-1 rounded-2xl bg-white/[0.03] opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-500 pointer-events-none" />
 
       <div className="flex items-start gap-3.5">
         <div className="mt-0.5 text-white/25 group-hover:text-white/60 transition-colors duration-300">
@@ -400,17 +406,24 @@ function App() {
       </AnimatePresence>
 
       {/* Ambient lighting */}
-      <div className="fixed top-[-300px] left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full pointer-events-none"
+      <div className="fixed top-[-300px] left-1/2 -translate-x-1/2 w-[1100px] h-[700px] rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.03) 40%, transparent 70%)' }} />
+      <div className="fixed bottom-[-200px] left-[-100px] w-[600px] h-[600px] rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 60%)' }} />
+      <div className="fixed top-[40%] right-[-150px] w-[500px] h-[500px] rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 60%)' }} />
+
+      {/* Center hero glow */}
+      <motion.div
+        className="fixed top-[20%] left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full pointer-events-none"
+        animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.05, 1] }}
+        transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
         style={{ background: 'radial-gradient(ellipse, rgba(255,255,255,0.06) 0%, transparent 60%)' }} />
-      <div className="fixed bottom-[-200px] left-[-100px] w-[500px] h-[500px] rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.02) 0%, transparent 60%)' }} />
-      <div className="fixed top-[40%] right-[-150px] w-[400px] h-[400px] rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.015) 0%, transparent 60%)' }} />
 
       {/* Top edge glow */}
-      <div className="fixed top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent z-30" />
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[500px] h-[100px] pointer-events-none z-20"
-        style={{ background: 'radial-gradient(ellipse at top, rgba(255,255,255,0.05) 0%, transparent 70%)' }} />
+      <div className="fixed top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/30 to-transparent z-30" />
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[150px] pointer-events-none z-20"
+        style={{ background: 'radial-gradient(ellipse at top, rgba(255,255,255,0.08) 0%, transparent 70%)' }} />
 
       <AnimatePresence>{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}</AnimatePresence>
       <AnimatePresence>{scanning && <ScanOverlay label={scanLabel} fileCount={scanCount} currentFile={scanFile} />}</AnimatePresence>
@@ -422,10 +435,17 @@ function App() {
           transition={{ duration: 0.8 }} className="text-center mb-14">
           <div className="inline-flex items-center gap-3.5 mb-4">
             <div className="relative">
-              <Orbit className="text-white" size={30} strokeWidth={1.5} />
-              <div className="absolute -inset-3 bg-white/10 rounded-full blur-xl" />
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}>
+                <Orbit className="text-white" size={30} strokeWidth={1.5} />
+              </motion.div>
+              <div className="absolute -inset-4 bg-white/15 rounded-full blur-2xl" />
+              <div className="absolute -inset-8 bg-white/5 rounded-full blur-3xl" />
             </div>
-            <h1 className="text-4xl font-semibold tracking-tight">Ocular</h1>
+            <h1 className="text-4xl font-semibold tracking-tight">
+              <span className="drop-shadow-[0_0_25px_rgba(255,255,255,0.3)]">Ocular</span>
+            </h1>
           </div>
           <p className="text-white/30 text-[13px] tracking-[0.2em] uppercase font-light">
             Search your files instantly
@@ -440,12 +460,13 @@ function App() {
           transition={{ duration: 0.6, delay: 0.1 }} className="relative mb-6" ref={historyRef}>
           <form onSubmit={handleSearch} className="relative group/s">
             {/* Focus glow */}
-            <div className="absolute -inset-2 rounded-3xl bg-white/[0.04] opacity-0 group-focus-within/s:opacity-100 blur-2xl transition-opacity duration-700 pointer-events-none" />
+            <div className="absolute -inset-3 rounded-3xl bg-white/[0.06] opacity-0 group-focus-within/s:opacity-100 blur-2xl transition-opacity duration-700 pointer-events-none" />
+            <div className="absolute -inset-6 rounded-[2rem] bg-white/[0.03] opacity-0 group-focus-within/s:opacity-100 blur-3xl transition-opacity duration-700 pointer-events-none" />
             <div className="relative">
               <input ref={inputRef} type="text" value={query}
                 onChange={(e) => setQuery(e.target.value)} onClick={() => setShowHistory(true)}
                 placeholder="Search files, content, anything..."
-                className="w-full bg-white/[0.06] backdrop-blur-xl border border-white/[0.1] rounded-2xl py-4 px-6 pl-[3.25rem] pr-12 text-[15px] text-white placeholder-white/25 focus:outline-none focus:border-white/[0.2] focus:bg-white/[0.08] transition-all duration-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_15px_rgba(255,255,255,0.03)] focus:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_25px_rgba(255,255,255,0.06)]" />
+                className="w-full bg-white/[0.06] backdrop-blur-xl border border-white/[0.1] rounded-2xl py-4 px-6 pl-[3.25rem] pr-12 text-[15px] text-white placeholder-white/25 focus:outline-none focus:border-white/[0.25] focus:bg-white/[0.08] transition-all duration-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_15px_rgba(255,255,255,0.03)] focus:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_30px_rgba(255,255,255,0.07),0_0_60px_rgba(255,255,255,0.03)]" />
               {searching
                 ? <Loader2 className="absolute left-[1.1rem] top-[1.05rem] text-white animate-spin" size={20} />
                 : <Search className="absolute left-[1.1rem] top-[1.05rem] text-white/30" size={20} />}
@@ -459,7 +480,9 @@ function App() {
                 <div className="absolute right-5 top-[1.15rem] text-[10px] text-white/15 font-mono tracking-[0.15em] hidden sm:block">ENTER</div>
               )}
               {/* Top shine on search bar */}
-              <div className="absolute top-0 left-[10%] right-[10%] h-[1px] bg-gradient-to-r from-transparent via-white/[0.1] to-transparent rounded-full" />
+              <div className="absolute top-0 left-[10%] right-[10%] h-[1px] bg-gradient-to-r from-transparent via-white/[0.15] to-transparent rounded-full" />
+              {/* Bottom shine on focus */}
+              <div className="absolute bottom-0 left-[20%] right-[20%] h-[1px] bg-gradient-to-r from-transparent via-white/[0.06] to-transparent rounded-full opacity-0 group-focus-within/s:opacity-100 transition-opacity duration-500" />
             </div>
           </form>
 
@@ -499,13 +522,15 @@ function App() {
         {/* Buttons */}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="flex gap-3 mb-12">
           <button onClick={handleScan} disabled={scanning}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/70 hover:bg-white/[0.1] hover:border-white/[0.14] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_12px_rgba(255,255,255,0.04)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+            className="group/btn relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/80 hover:bg-white/[0.1] hover:border-white/[0.18] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_20px_rgba(255,255,255,0.06),0_0_40px_rgba(255,255,255,0.02)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <FolderSearch size={14} /> Index folder
+            <div className="absolute inset-0 rounded-xl bg-white/[0.05] opacity-0 group-hover/btn:opacity-100 blur-xl transition-opacity duration-300 pointer-events-none" />
           </button>
           <button onClick={handleGoogleDrive} disabled={scanning}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/70 hover:bg-white/[0.1] hover:border-white/[0.14] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_12px_rgba(255,255,255,0.04)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_10px_rgba(255,255,255,0.02)]">
+            className="group/btn relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/80 hover:bg-white/[0.1] hover:border-white/[0.18] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_20px_rgba(255,255,255,0.06),0_0_40px_rgba(255,255,255,0.02)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 19.5h20L12 2z"/><path d="M2 19.5l5-8.5"/><path d="M22 19.5l-5-8.5"/><path d="M7 11h10"/></svg>
             Google Drive
+            <div className="absolute inset-0 rounded-xl bg-white/[0.05] opacity-0 group-hover/btn:opacity-100 blur-xl transition-opacity duration-300 pointer-events-none" />
           </button>
         </motion.div>
 
@@ -527,7 +552,7 @@ function App() {
                 <p className="text-white/20 text-[11px] font-mono tracking-[0.15em]">
                   {results.length} RESULT{results.length !== 1 ? 'S' : ''}
                 </p>
-                <div className="h-[1px] flex-1 bg-gradient-to-r from-white/[0.06] to-transparent" />
+                <div className="h-[1px] flex-1 bg-gradient-to-r from-white/[0.12] to-transparent shadow-[0_0_8px_rgba(255,255,255,0.06)]" />
               </motion.div>
             )}
           </AnimatePresence>
@@ -552,8 +577,16 @@ function App() {
           {!hasSearched && !results.length && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} className="text-center py-24">
               <div className="relative inline-block mb-5">
-                <Orbit size={36} className="text-white/15" strokeWidth={1} />
-                <div className="absolute -inset-6 bg-white/5 rounded-full blur-3xl" />
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}>
+                  <Orbit size={36} className="text-white/20" strokeWidth={1} />
+                </motion.div>
+                <motion.div
+                  className="absolute -inset-6 bg-white/8 rounded-full blur-3xl"
+                  animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.1, 1] }}
+                  transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }} />
+                <div className="absolute -inset-10 bg-white/3 rounded-full blur-[40px]" />
               </div>
               <p className="text-white/25 text-sm mb-6">
                 {indexedCount > 0
