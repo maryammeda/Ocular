@@ -269,6 +269,8 @@ function App() {
           }
         }
 
+        console.log(`[GDrive] ${file.name} | type=${result.type} | content=${content.length} chars`)
+
         await engine.addDocument({
           filename: file.name,
           filepath: `Google Drive/${file.name}`,
