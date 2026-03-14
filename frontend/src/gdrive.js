@@ -47,7 +47,7 @@ export async function listFiles(token) {
     const params = new URLSearchParams({
       q: `(${q}) and trashed=false`,
       fields: 'nextPageToken,files(id,name,mimeType,size)',
-      pageSize: '100',
+      pageSize: '1000',
       orderBy: 'modifiedTime desc',
     })
     if (pageToken) params.set('pageToken', pageToken)

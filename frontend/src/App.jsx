@@ -247,44 +247,57 @@ function App() {
       setScanLabel(`Indexing ${files.length} files from Google Drive`)
 
       let count = 0
-      for (const file of files) {
-        try {
-          const result = await downloadFile(token, file)
-          let content = ''
-          let isImage = false
-          let imageData = null
+      let skipped = 0
+      const BATCH_SIZE = 5
 
-          if (result.type === 'text') {
-            content = result.data
-          } else if (result.type === 'image') {
-            isImage = true
-            imageData = result.data
-          } else if (result.type === 'binary') {
-            if (result.mimeType === 'application/pdf') {
-              content = await engine.extractPDFFromBuffer(result.data)
-            } else {
-              content = await engine.extractDOCXFromBuffer(result.data)
-            }
+      const processFile = async (file) => {
+        const result = await downloadFile(token, file)
+        let content = ''
+        let isImage = false
+        let imageData = null
+
+        if (result.type === 'text') {
+          content = result.data
+        } else if (result.type === 'image') {
+          isImage = true
+          imageData = result.data
+        } else if (result.type === 'binary') {
+          if (result.mimeType === 'application/pdf') {
+            content = await engine.extractPDFFromBuffer(result.data)
+          } else {
+            content = await engine.extractDOCXFromBuffer(result.data)
           }
-
-          await engine.addDocument({
-            filename: file.name,
-            filepath: `Google Drive/${file.name}`,
-            content,
-            filetype: result.filetype,
-            isImage,
-            imageData,
-          })
-
-          count++
-          onProgress(count, file.name)
-        } catch (e) {
-          console.warn(`Skipped ${file.name}:`, e.message)
         }
+
+        await engine.addDocument({
+          filename: file.name,
+          filepath: `Google Drive/${file.name}`,
+          content,
+          filetype: result.filetype,
+          isImage,
+          imageData,
+        })
+      }
+
+      for (let i = 0; i < files.length; i += BATCH_SIZE) {
+        const batch = files.slice(i, i + BATCH_SIZE)
+        const results = await Promise.allSettled(batch.map(f => processFile(f)))
+        for (let j = 0; j < results.length; j++) {
+          if (results[j].status === 'fulfilled') {
+            count++
+          } else {
+            skipped++
+            console.warn(`Skipped ${batch[j].name}:`, results[j].reason?.message)
+          }
+        }
+        onProgress(count, batch[batch.length - 1].name)
       }
 
       setIndexedCount(engine.count)
-      notify(`Indexed ${count} files from Google Drive`)
+      const msg = skipped > 0
+        ? `Indexed ${count} files from Google Drive (${skipped} skipped)`
+        : `Indexed ${count} files from Google Drive`
+      notify(msg)
     } catch (e) {
       if (!e.message?.includes('popup_closed')) notify(e.message, 'error')
     } finally { setScanning(false) }
