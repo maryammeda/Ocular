@@ -407,7 +407,7 @@ function App() {
             <div className="absolute -inset-2 rounded-3xl bg-white/[0.04] opacity-0 group-focus-within/s:opacity-100 blur-2xl transition-opacity duration-700 pointer-events-none" />
             <div className="relative">
               <input ref={inputRef} type="text" value={query}
-                onChange={(e) => setQuery(e.target.value)} onFocus={() => setShowHistory(true)}
+                onChange={(e) => setQuery(e.target.value)} onClick={() => setShowHistory(true)}
                 placeholder="Search files, content, anything..."
                 className="w-full bg-white/[0.06] backdrop-blur-xl border border-white/[0.1] rounded-2xl py-4 px-6 pl-[3.25rem] pr-12 text-[15px] text-white placeholder-white/25 focus:outline-none focus:border-white/[0.2] focus:bg-white/[0.08] transition-all duration-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_15px_rgba(255,255,255,0.03)] focus:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_25px_rgba(255,255,255,0.06)]" />
               {searching
