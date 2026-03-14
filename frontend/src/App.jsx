@@ -405,13 +405,8 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Ambient light */}
-      <div className="ambient-bg" />
-
       {/* Top edge glow */}
-      <div className="fixed top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/25 to-transparent z-30" />
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[120px] pointer-events-none z-20"
-        style={{ background: 'radial-gradient(ellipse at top, rgba(255,255,255,0.06) 0%, transparent 70%)' }} />
+      <div className="fixed top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent z-30" />
 
       <AnimatePresence>{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}</AnimatePresence>
       <AnimatePresence>{scanning && <ScanOverlay label={scanLabel} fileCount={scanCount} currentFile={scanFile} />}</AnimatePresence>
@@ -432,7 +427,7 @@ function App() {
               <div className="absolute -inset-8 bg-white/5 rounded-full blur-3xl" />
             </div>
             <h1 className="text-4xl font-semibold tracking-tight">
-              <span className="drop-shadow-[0_0_25px_rgba(255,255,255,0.3)]">Ocular</span>
+              <span className="drop-shadow-[0_0_20px_rgba(255,255,255,0.5)] drop-shadow-[0_0_60px_rgba(255,255,255,0.25)]">Ocular</span>
             </h1>
           </div>
           <p className="text-white/30 text-[13px] tracking-[0.2em] uppercase font-light">
