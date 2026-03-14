@@ -177,20 +177,21 @@ class SearchEngine {
   search(query) {
     if (!query.trim()) return []
     const q = query.toLowerCase()
+    const wordRe = new RegExp(`\\b${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'gi')
     const results = []
 
     for (const doc of this.documents) {
-      const contentLower = (doc.content || '').toLowerCase()
-      const filenameLower = doc.filename.toLowerCase()
+      const content = doc.content || ''
+      const contentMatches = content.match(wordRe)
+      const filenameMatches = doc.filename.match(wordRe)
 
-      if (contentLower.includes(q) || filenameLower.includes(q)) {
-        const count = contentLower.split(q).length - 1
+      if (contentMatches || filenameMatches) {
         results.push({
           filename: doc.filename,
           filepath: doc.filepath,
-          snippet: this._snippet(doc.content, query),
+          snippet: this._snippet(content, query),
           filetype: doc.filetype,
-          matches: Math.max(count, 1),
+          matches: (contentMatches?.length || 0) + (filenameMatches?.length || 0),
           isImage: doc.isImage,
           imageData: doc.imageData,
         })
