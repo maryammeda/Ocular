@@ -167,6 +167,44 @@ function ResultCard({ item, index, searchQuery }) {
   )
 }
 
+// ── Rotating Tips ─────────────────────────────────────────
+const TIPS = [
+  'Drag & drop any file or folder onto the page to index it instantly',
+  'Ocular can read text inside images and screenshots using OCR',
+  'Search inside PDFs, DOCX, and Google Docs — not just filenames',
+  'Hover over a result to preview its full content',
+  'Connect Google Drive to search across all your cloud documents',
+  'Your indexed files persist between sessions — no need to re-scan',
+  'Ocular finds matches inside scanned documents and lecture slides',
+  'Use specific keywords for better results — Ocular ranks by match count',
+  'Index your Desktop, Downloads, and Documents folders for quick access',
+  'Ocular supports TXT, MD, CSV, PDF, DOCX, PNG, and JPG files',
+]
+
+function RotatingTips() {
+  const [index, setIndex] = useState(() => Math.floor(Math.random() * TIPS.length))
+  useEffect(() => {
+    const timer = setInterval(() => setIndex(i => (i + 1) % TIPS.length), 5000)
+    return () => clearInterval(timer)
+  }, [])
+  return (
+    <div className="h-6 relative overflow-hidden">
+      <AnimatePresence mode="wait">
+        <motion.p
+          key={index}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.3 }}
+          className="text-white/20 text-xs font-mono absolute inset-x-0"
+        >
+          tip: {TIPS[index]}
+        </motion.p>
+      </AnimatePresence>
+    </div>
+  )
+}
+
 // ── App ────────────────────────────────────────────────────
 function App() {
   const [query, setQuery] = useState('')
@@ -524,17 +562,7 @@ function App() {
                   ? `${indexedCount} files ready — start searching`
                   : 'Index a folder or connect Google Drive to get started'}
               </p>
-              <div className="flex items-center justify-center gap-3">
-                <button onClick={handleScan} disabled={!supportsFS}
-                  className="text-xs bg-white/[0.06] border border-white/[0.08] rounded-xl px-4 py-2.5 text-white/35 hover:text-white/60 hover:bg-white/[0.1] hover:border-white/[0.14] backdrop-blur-xl transition-all flex items-center gap-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] disabled:opacity-25">
-                  <FolderSearch size={12} /> Index a folder
-                </button>
-                <button onClick={handleGoogleDrive}
-                  className="text-xs bg-white/[0.06] border border-white/[0.08] rounded-xl px-4 py-2.5 text-white/35 hover:text-white/60 hover:bg-white/[0.1] hover:border-white/[0.14] backdrop-blur-xl transition-all flex items-center gap-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 19.5h20L12 2z"/><path d="M2 19.5l5-8.5"/><path d="M22 19.5l-5-8.5"/><path d="M7 11h10"/></svg>
-                  Google Drive
-                </button>
-              </div>
+              <RotatingTips />
             </motion.div>
           )}
         </div>
