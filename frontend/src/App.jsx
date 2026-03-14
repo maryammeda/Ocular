@@ -169,16 +169,14 @@ function ResultCard({ item, index, searchQuery }) {
 
 // ── Rotating Tips ─────────────────────────────────────────
 const TIPS = [
-  'Drag & drop any file or folder onto the page to index it instantly',
-  'Ocular can read text inside images and screenshots using OCR',
   'Search inside PDFs, DOCX, and Google Docs — not just filenames',
   'Hover over a result to preview its full content',
   'Connect Google Drive to search across all your cloud documents',
   'Your indexed files persist between sessions — no need to re-scan',
-  'Ocular finds matches inside scanned documents and lecture slides',
   'Use specific keywords for better results — Ocular ranks by match count',
-  'Index your Desktop, Downloads, and Documents folders for quick access',
-  'Ocular supports TXT, MD, CSV, PDF, DOCX, PNG, and JPG files',
+  'Index any folder on your computer using the "Index folder" button',
+  'Google Docs and Sheets are automatically converted to searchable text',
+  'Results are sorted by how many times your keyword appears in the file',
 ]
 
 function RotatingTips() {
