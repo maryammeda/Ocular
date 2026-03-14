@@ -405,8 +405,8 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Sweeping light */}
-      <div className="light-sweep" />
+      {/* Ambient light */}
+      <div className="ambient-bg" />
 
       {/* Top edge glow */}
       <div className="fixed top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/25 to-transparent z-30" />
