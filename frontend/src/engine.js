@@ -34,6 +34,21 @@ async function getMammoth() {
   return _mammoth
 }
 
+// ── OCR with worker pool (lazy-loaded) ───────────────────
+const OCR_WORKERS = 4
+let _ocrScheduler = null
+async function getOcrScheduler() {
+  if (!_ocrScheduler) {
+    const Tesseract = await import('tesseract.js')
+    _ocrScheduler = Tesseract.createScheduler()
+    for (let i = 0; i < OCR_WORKERS; i++) {
+      const worker = await Tesseract.createWorker('eng')
+      _ocrScheduler.addWorker(worker)
+    }
+  }
+  return _ocrScheduler
+}
+
 // ── Engine ────────────────────────────────────────────────
 class SearchEngine {
   documents = []
@@ -91,12 +106,19 @@ class SearchEngine {
 
           try {
             const file = await entry.getFile()
-            const content = type !== 'image' ? await this._extractContent(file, type) : ''
             const isImage = type === 'image'
-
+            let content = ''
             let imageData = null
-            if (isImage && file.size < 10 * 1024 * 1024) {
-              imageData = await fileToDataURL(file)
+
+            if (isImage) {
+              if (file.size < 10 * 1024 * 1024) {
+                imageData = await fileToDataURL(file)
+                const scheduler = await getOcrScheduler()
+                const { data } = await scheduler.addJob('recognize', file)
+                content = data.text?.trim() || ''
+              }
+            } else {
+              content = await this._extractContent(file, type)
             }
 
             const filepath = `${pathPrefix}/${entry.name}`
@@ -250,6 +272,17 @@ class SearchEngine {
     await this._save(doc)
   }
 
+  async ocrFromDataURL(dataUrl) {
+    try {
+      const scheduler = await getOcrScheduler()
+      const { data } = await scheduler.addJob('recognize', dataUrl)
+      return data.text?.trim() || ''
+    } catch (e) {
+      console.warn('OCR failed:', e.message)
+      return ''
+    }
+  }
+
   async extractPDFFromBuffer(arrayBuffer) {
     const pdfjsLib = await getPdfJs()
     const data = new Uint8Array(arrayBuffer)
@@ -289,11 +322,18 @@ class SearchEngine {
           if (!type) continue
 
           const file = await handle.getFile()
-          const content = type !== 'image' ? await this._extractContent(file, type) : ''
           const isImage = type === 'image'
+          let content = ''
           let imageData = null
-          if (isImage && file.size < 10 * 1024 * 1024) {
-            imageData = await fileToDataURL(file)
+          if (isImage) {
+            if (file.size < 10 * 1024 * 1024) {
+              imageData = await fileToDataURL(file)
+              const scheduler = await getOcrScheduler()
+              const { data } = await scheduler.addJob('recognize', file)
+              content = data.text?.trim() || ''
+            }
+          } else {
+            content = await this._extractContent(file, type)
           }
 
           const filepath = `dropped/${handle.name}`

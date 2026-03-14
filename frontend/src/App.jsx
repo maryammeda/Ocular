@@ -303,6 +303,7 @@ function App() {
         } else if (result.type === 'image') {
           isImage = true
           imageData = result.data
+          content = await engine.ocrFromDataURL(result.data)
         } else if (result.type === 'binary') {
           if (result.mimeType === 'application/pdf') {
             content = await engine.extractPDFFromBuffer(result.data)
