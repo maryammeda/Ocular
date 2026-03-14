@@ -17,51 +17,12 @@ body {
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 
-@keyframes drift-1 {
-  0%   { transform: translate(0%, 0%); }
-  25%  { transform: translate(5%, -8%); }
-  50%  { transform: translate(-3%, -4%); }
-  75%  { transform: translate(-6%, 5%); }
-  100% { transform: translate(0%, 0%); }
-}
-
-@keyframes drift-2 {
-  0%   { transform: translate(0%, 0%); }
-  25%  { transform: translate(-7%, 4%); }
-  50%  { transform: translate(4%, 7%); }
-  75%  { transform: translate(5%, -5%); }
-  100% { transform: translate(0%, 0%); }
-}
-
 .ambient-bg {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  overflow: hidden;
-}
-
-.ambient-bg::before,
-.ambient-bg::after {
-  content: '';
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(100px);
-}
-
-.ambient-bg::before {
-  top: -15%;
-  left: -5%;
-  width: 60%;
-  height: 55%;
-  background: radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%);
-  animation: drift-1 30s ease-in-out infinite;
-}
-
-.ambient-bg::after {
-  bottom: -10%;
-  right: -10%;
-  width: 50%;
-  height: 50%;
-  background: radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 70%);
-  animation: drift-2 25s ease-in-out infinite;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 20%, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 40%, transparent 70%),
+    radial-gradient(circle at 25% 70%, rgba(255,255,255,0.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 60%, rgba(255,255,255,0.04) 0%, transparent 50%);
 }
