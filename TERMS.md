@@ -4,7 +4,7 @@
 
 ## Usage
 
-Ocular is provided as-is, without warranty of any kind. You are free to use, modify, and distribute it in accordance with the project's license.
+Ocular is provided as-is, without warranty of any kind. You are free to use the application, but all source code and intellectual property remain the property of the author. Copying, modifying, or redistributing the code without permission is not permitted.
 
 ## Liability
 
