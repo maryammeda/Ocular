@@ -581,6 +581,11 @@ function App() {
             </motion.div>
           )}
         </div>
+        <footer className="text-center py-4 text-white/20 text-xs">
+          <a href="https://maryammeda.github.io/Ocular/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-white/40 transition-colors">Privacy Policy</a>
+          <span className="mx-2">·</span>
+          <a href="https://maryammeda.github.io/Ocular/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-white/40 transition-colors">Terms of Service</a>
+        </footer>
       </div>
     </div>
   )
