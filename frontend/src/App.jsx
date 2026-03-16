@@ -5,7 +5,7 @@ import { engine } from './engine'
 import { authorize, listFiles, downloadFile, pickFiles } from './gdrive'
 
 const GOOGLE_CLIENT_ID = '626244387316-qmi5r37ur3ibi73v1ngj7ej34db8spbn.apps.googleusercontent.com'
-const GOOGLE_API_KEY = '' // TODO: add your Picker API key here
+const GOOGLE_API_KEY = 'AIzaSyDEzV3Lr9MU9z7WuuGd0V0LPCouf5uwnlw'
 
 const fileIconMap = {
   py: FileCode, js: FileCode, jsx: FileCode, ts: FileCode, tsx: FileCode,
