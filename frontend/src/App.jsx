@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Search, FolderSearch, Upload, Loader2, FileText, FileCode, FileImage, File, CheckCircle2, AlertCircle, X, Orbit, Scan, Clock, Trash2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { engine } from './engine'
-import { authorize, listFiles, downloadFile } from './gdrive'
+import { authorize, listFiles, downloadFile, pickFiles } from './gdrive'
 
 const GOOGLE_CLIENT_ID = '626244387316-qmi5r37ur3ibi73v1ngj7ej34db8spbn.apps.googleusercontent.com'
+const GOOGLE_API_KEY = '' // TODO: add your Picker API key here
 
 const fileIconMap = {
   py: FileCode, js: FileCode, jsx: FileCode, ts: FileCode, tsx: FileCode,
@@ -227,9 +228,13 @@ function App() {
   const [dragging, setDragging] = useState(false)
   const [ocrEnabled, setOcrEnabled] = useState(() => localStorage.getItem('ocular_ocr_enabled') !== 'false')
   const [isOcr, setIsOcr] = useState(false)
+  const [showDriveMenu, setShowDriveMenu] = useState(false)
+  const [showFullDriveSetup, setShowFullDriveSetup] = useState(false)
+  const [userClientId, setUserClientId] = useState(() => localStorage.getItem('ocular_user_gdrive_client_id') || '')
   const inputRef = useRef(null)
   const historyRef = useRef(null)
   const dragCounter = useRef(0)
+  const driveMenuRef = useRef(null)
 
   const notify = (msg, type = 'success') => setToast({ message: msg, type })
 
@@ -243,7 +248,10 @@ function App() {
 
   useEffect(() => { if (ready) inputRef.current?.focus() }, [ready])
   useEffect(() => {
-    const h = (e) => { if (historyRef.current && !historyRef.current.contains(e.target)) setShowHistory(false) }
+    const h = (e) => {
+      if (historyRef.current && !historyRef.current.contains(e.target)) setShowHistory(false)
+      if (driveMenuRef.current && !driveMenuRef.current.contains(e.target)) setShowDriveMenu(false)
+    }
     document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h)
   }, [])
 
@@ -281,74 +289,109 @@ function App() {
     } finally { setScanning(false) }
   }
 
-  // ── Google Drive ─────────────────────────────────────────
-  const handleGoogleDrive = async () => {
-    if (!GOOGLE_CLIENT_ID) return notify('Google Drive not configured.', 'error')
+  // ── Google Drive shared processing ──────────────────────
+  const processDriveFiles = async (token, files, label) => {
+    setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false)
+    setScanLabel(label)
+
+    let count = 0
+    let skipped = 0
+    const BATCH_SIZE = 5
+
+    const processFile = async (file) => {
+      const result = await downloadFile(token, file)
+      let content = ''
+      let isImage = false
+      let imageData = null
+
+      if (result.type === 'text') {
+        content = result.data
+      } else if (result.type === 'image') {
+        isImage = true
+        imageData = result.data
+        content = ocrEnabled ? await engine.ocrFromDataURL(result.data) : ''
+      } else if (result.type === 'binary') {
+        if (result.mimeType === 'application/pdf') {
+          content = await engine.extractPDFFromBuffer(result.data)
+        } else {
+          content = await engine.extractDOCXFromBuffer(result.data)
+        }
+      }
+
+      await engine.addDocument({
+        filename: file.name,
+        filepath: `Google Drive/${file.name}`,
+        content,
+        filetype: result.filetype,
+        isImage,
+        imageData,
+      })
+    }
+
+    for (let i = 0; i < files.length; i += BATCH_SIZE) {
+      const batch = files.slice(i, i + BATCH_SIZE)
+      const results = await Promise.allSettled(batch.map(f => processFile(f)))
+      for (let j = 0; j < results.length; j++) {
+        if (results[j].status === 'fulfilled') {
+          count++
+        } else {
+          skipped++
+          console.warn(`Skipped ${batch[j].name}:`, results[j].reason?.message)
+        }
+      }
+      onProgress(count, batch[batch.length - 1].name)
+    }
+
+    setIndexedCount(engine.count)
+    setScanning(false)
+    const msg = skipped > 0
+      ? `Indexed ${count} files from Google Drive (${skipped} skipped)`
+      : `Indexed ${count} files from Google Drive`
+    notify(msg)
+  }
+
+  // ── Quick Scan (Picker) ────────────────────────────────
+  const handleQuickScan = async () => {
+    setShowDriveMenu(false)
+    if (!GOOGLE_API_KEY) return notify('Picker API key not configured yet.', 'error')
     try {
-      const token = await authorize(GOOGLE_CLIENT_ID)
-      setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false); setScanLabel('Fetching files from Google Drive')
-
-      const files = await listFiles(token)
-      setScanLabel(`Indexing ${files.length} files from Google Drive`)
-
-      let count = 0
-      let skipped = 0
-      const BATCH_SIZE = 5
-
-      const processFile = async (file) => {
-        const result = await downloadFile(token, file)
-        let content = ''
-        let isImage = false
-        let imageData = null
-
-        if (result.type === 'text') {
-          content = result.data
-        } else if (result.type === 'image') {
-          isImage = true
-          imageData = result.data
-          content = ocrEnabled ? await engine.ocrFromDataURL(result.data) : ''
-        } else if (result.type === 'binary') {
-          if (result.mimeType === 'application/pdf') {
-            content = await engine.extractPDFFromBuffer(result.data)
-          } else {
-            content = await engine.extractDOCXFromBuffer(result.data)
-          }
-        }
-
-        console.log(`[GDrive] ${file.name} | type=${result.type} | content=${content.length} chars`)
-
-        await engine.addDocument({
-          filename: file.name,
-          filepath: `Google Drive/${file.name}`,
-          content,
-          filetype: result.filetype,
-          isImage,
-          imageData,
-        })
-      }
-
-      for (let i = 0; i < files.length; i += BATCH_SIZE) {
-        const batch = files.slice(i, i + BATCH_SIZE)
-        const results = await Promise.allSettled(batch.map(f => processFile(f)))
-        for (let j = 0; j < results.length; j++) {
-          if (results[j].status === 'fulfilled') {
-            count++
-          } else {
-            skipped++
-            console.warn(`Skipped ${batch[j].name}:`, results[j].reason?.message)
-          }
-        }
-        onProgress(count, batch[batch.length - 1].name)
-      }
-
-      setIndexedCount(engine.count)
-      const msg = skipped > 0
-        ? `Indexed ${count} files from Google Drive (${skipped} skipped)`
-        : `Indexed ${count} files from Google Drive`
-      notify(msg)
+      const { token, files } = await pickFiles(GOOGLE_CLIENT_ID, GOOGLE_API_KEY)
+      await processDriveFiles(token, files, `Indexing ${files.length} selected files`)
     } catch (e) {
       if (!e.message?.includes('popup_closed')) notify(e.message, 'error')
-    } finally { setScanning(false) }
+    }
+  }
+
+  // ── Full Drive Scan (user's own Client ID) ─────────────
+  const handleFullDriveScan = async () => {
+    setShowDriveMenu(false)
+    if (!userClientId.trim()) return setShowFullDriveSetup(true)
+    try {
+      const token = await authorize(userClientId.trim())
+      setScanLabel('Fetching files from Google Drive')
+      setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false)
+      const files = await listFiles(token)
+      await processDriveFiles(token, files, `Indexing ${files.length} files from Google Drive`)
+    } catch (e) {
+      if (!e.message?.includes('popup_closed')) notify(e.message, 'error')
+      setScanning(false)
+    }
+  }
+
+  const startFullDriveScan = async () => {
+    if (!userClientId.trim()) return notify('Please enter a Client ID.', 'error')
+    localStorage.setItem('ocular_user_gdrive_client_id', userClientId.trim())
+    setShowFullDriveSetup(false)
+    try {
+      const token = await authorize(userClientId.trim())
+      setScanLabel('Fetching files from Google Drive')
+      setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false)
+      const files = await listFiles(token)
+      await processDriveFiles(token, files, `Indexing ${files.length} files from Google Drive`)
+    } catch (e) {
+      if (!e.message?.includes('popup_closed')) notify(e.message, 'error')
+      setScanning(false)
+    }
   }
 
   // ── Drag & drop ──────────────────────────────────────────
@@ -514,12 +557,32 @@ function App() {
               <FolderSearch size={14} /> Index folder
               <div className="absolute inset-0 rounded-xl bg-white/[0.05] opacity-0 group-hover/btn:opacity-100 blur-xl transition-opacity duration-300 pointer-events-none" />
             </button>
-            <button onClick={handleGoogleDrive} disabled={scanning}
-              className="group/btn relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/80 hover:bg-white/[0.1] hover:border-white/[0.18] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_20px_rgba(255,255,255,0.06),0_0_40px_rgba(255,255,255,0.02)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 19.5h20L12 2z"/><path d="M2 19.5l5-8.5"/><path d="M22 19.5l-5-8.5"/><path d="M7 11h10"/></svg>
-              Google Drive
-              <div className="absolute inset-0 rounded-xl bg-white/[0.05] opacity-0 group-hover/btn:opacity-100 blur-xl transition-opacity duration-300 pointer-events-none" />
-            </button>
+            <div className="relative" ref={driveMenuRef}>
+              <button onClick={() => setShowDriveMenu(!showDriveMenu)} disabled={scanning}
+                className="group/btn relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/80 hover:bg-white/[0.1] hover:border-white/[0.18] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_20px_rgba(255,255,255,0.06),0_0_40px_rgba(255,255,255,0.02)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 19.5h20L12 2z"/><path d="M2 19.5l5-8.5"/><path d="M22 19.5l-5-8.5"/><path d="M7 11h10"/></svg>
+                Google Drive
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                <div className="absolute inset-0 rounded-xl bg-white/[0.05] opacity-0 group-hover/btn:opacity-100 blur-xl transition-opacity duration-300 pointer-events-none" />
+              </button>
+              <AnimatePresence>
+                {showDriveMenu && (
+                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+                    className="absolute top-full mt-2 left-0 w-64 bg-white/10 backdrop-blur-2xl border border-white/15 rounded-xl overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,0.4)] z-30">
+                    <button onClick={handleQuickScan}
+                      className="w-full text-left px-4 py-3 hover:bg-white/[0.08] transition-colors border-b border-white/[0.06]">
+                      <p className="text-[13px] text-white/70">Select Files</p>
+                      <p className="text-[10px] text-white/25 mt-0.5">Pick specific files from Google Drive</p>
+                    </button>
+                    <button onClick={handleFullDriveScan}
+                      className="w-full text-left px-4 py-3 hover:bg-white/[0.08] transition-colors">
+                      <p className="text-[13px] text-white/70">Full Drive Scan</p>
+                      <p className="text-[10px] text-white/25 mt-0.5">Index everything — requires one-time setup</p>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
           <label className="flex items-center gap-2 cursor-pointer select-none group">
             <div className="relative w-3.5 h-3.5">
@@ -603,6 +666,47 @@ function App() {
           <a href="https://maryammeda.github.io/Ocular/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-white/40 transition-colors">Terms of Service</a>
         </footer>
       </div>
+
+      {/* Full Drive Scan setup modal */}
+      <AnimatePresence>
+        {showFullDriveSetup && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xl flex items-center justify-center p-4"
+            onClick={() => setShowFullDriveSetup(false)}>
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white/10 backdrop-blur-2xl border border-white/15 rounded-2xl p-8 max-w-lg w-full shadow-[0_20px_80px_rgba(0,0,0,0.4)]">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-white font-medium text-lg">Full Drive Scan Setup</h2>
+                <button onClick={() => setShowFullDriveSetup(false)} className="text-white/30 hover:text-white/60 transition"><X size={18} /></button>
+              </div>
+              <div className="text-white/40 text-[13px] space-y-3 mb-6 leading-relaxed">
+                <p className="text-white/60">To scan your entire Google Drive, you need your own Google Cloud credentials. This is a one-time setup:</p>
+                <ol className="list-decimal list-inside space-y-2 text-white/40">
+                  <li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-white/60 underline underline-offset-2">Google Cloud Console</a></li>
+                  <li>Create a new project</li>
+                  <li>Go to <span className="text-white/60">APIs &amp; Services &gt; Library</span> and enable <span className="text-white/60">Google Drive API</span></li>
+                  <li>Go to <span className="text-white/60">APIs &amp; Services &gt; Credentials</span></li>
+                  <li>Click <span className="text-white/60">Create Credentials &gt; OAuth Client ID</span></li>
+                  <li>Set type to <span className="text-white/60">Web application</span></li>
+                  <li>Add your current URL to <span className="text-white/60">Authorized JavaScript Origins</span></li>
+                  <li>Copy the <span className="text-white/60">Client ID</span> and paste it below</li>
+                </ol>
+                <p className="text-white/25 text-[11px]">Your Client ID stays in your browser. Ocular never sends it to any server.</p>
+              </div>
+              <div className="flex gap-3">
+                <input type="text" value={userClientId} onChange={(e) => setUserClientId(e.target.value)}
+                  placeholder="Paste your Client ID here"
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/[0.1] text-white/80 text-[13px] placeholder-white/20 outline-none focus:border-white/25 transition" />
+                <button onClick={startFullDriveScan}
+                  className="px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.1] border border-white/[0.15] text-white/70 hover:text-white hover:bg-white/[0.15] transition-all">
+                  Start Scan
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
