@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Ocular** is a free, open-source local search engine. Your privacy is simple: your data stays with you.
+**Ocular** is a free local search engine. Your privacy is simple: your data stays with you.
 
 ## What Ocular Accesses
 

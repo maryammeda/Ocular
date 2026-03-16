@@ -1,6 +1,6 @@
 # Terms of Service
 
-**Ocular** is a free, open-source project provided under the terms of its repository license.
+**Ocular** is a free project. All rights are reserved by the author.
 
 ## Usage
 
