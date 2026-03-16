@@ -46,7 +46,7 @@ function Toast({ message, type, onClose }) {
 }
 
 // ── Scan Overlay ───────────────────────────────────────────
-function ScanOverlay({ label, fileCount, currentFile }) {
+function ScanOverlay({ label, fileCount, currentFile, isOcr }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-40 bg-black/70 backdrop-blur-xl flex items-center justify-center">
@@ -66,7 +66,7 @@ function ScanOverlay({ label, fileCount, currentFile }) {
           <p className="text-white font-medium text-lg">{label}</p>
           <motion.p className="text-white/40 text-sm mt-1.5"
             animate={{ opacity: [0.3, 0.7, 0.3] }} transition={{ duration: 2, repeat: Infinity }}>
-            Crawling and indexing files...
+            {isOcr ? 'Running OCR — images take longer to process' : 'Crawling and indexing files...'}
           </motion.p>
           {fileCount > 0 && (
             <p className="text-white/25 text-xs mt-3 font-mono">{fileCount} files indexed</p>
@@ -225,6 +225,8 @@ function App() {
   const [indexedCount, setIndexedCount] = useState(0)
   const [ready, setReady] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [ocrEnabled, setOcrEnabled] = useState(() => localStorage.getItem('ocular_ocr_enabled') !== 'false')
+  const [isOcr, setIsOcr] = useState(false)
   const inputRef = useRef(null)
   const historyRef = useRef(null)
   const dragCounter = useRef(0)
@@ -245,9 +247,10 @@ function App() {
     document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h)
   }, [])
 
-  const onProgress = useCallback((count, filename) => {
+  const onProgress = useCallback((count, filename, ocrActive) => {
     setScanCount(count)
     setScanFile(filename)
+    if (ocrActive !== undefined) setIsOcr(ocrActive)
   }, [])
 
   const runSearch = (sq) => {
@@ -269,8 +272,8 @@ function App() {
     if (!supportsFS) return notify('Please use Chrome or Edge to scan folders.', 'error')
     try {
       const dirHandle = await window.showDirectoryPicker({ mode: 'read' })
-      setScanning(true); setScanCount(0); setScanFile(''); setScanLabel(`Scanning ${dirHandle.name}`)
-      const count = await engine.scanDirectory(dirHandle, onProgress)
+      setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false); setScanLabel(`Scanning ${dirHandle.name}`)
+      const count = await engine.scanDirectory(dirHandle, onProgress, { ocrEnabled })
       setIndexedCount(engine.count)
       notify(`Done — ${count} files indexed from ${dirHandle.name}`)
     } catch (e) {
@@ -283,7 +286,7 @@ function App() {
     if (!GOOGLE_CLIENT_ID) return notify('Google Drive not configured.', 'error')
     try {
       const token = await authorize(GOOGLE_CLIENT_ID)
-      setScanning(true); setScanCount(0); setScanFile(''); setScanLabel('Fetching files from Google Drive')
+      setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false); setScanLabel('Fetching files from Google Drive')
 
       const files = await listFiles(token)
       setScanLabel(`Indexing ${files.length} files from Google Drive`)
@@ -303,7 +306,7 @@ function App() {
         } else if (result.type === 'image') {
           isImage = true
           imageData = result.data
-          content = await engine.ocrFromDataURL(result.data)
+          content = ocrEnabled ? await engine.ocrFromDataURL(result.data) : ''
         } else if (result.type === 'binary') {
           if (result.mimeType === 'application/pdf') {
             content = await engine.extractPDFFromBuffer(result.data)
@@ -360,9 +363,9 @@ function App() {
     e.preventDefault(); dragCounter.current = 0; setDragging(false)
     const items = [...e.dataTransfer.items]
     if (!items.length) return
-    setScanning(true); setScanCount(0); setScanFile(''); setScanLabel('Scanning dropped files')
+    setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false); setScanLabel('Scanning dropped files')
     try {
-      const count = await engine.scanDroppedItems(items, onProgress)
+      const count = await engine.scanDroppedItems(items, onProgress, { ocrEnabled })
       setIndexedCount(engine.count)
       notify(`Done — ${count} files indexed`)
     } catch (err) {
@@ -410,7 +413,7 @@ function App() {
       <div className="fixed top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent z-30" />
 
       <AnimatePresence>{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}</AnimatePresence>
-      <AnimatePresence>{scanning && <ScanOverlay label={scanLabel} fileCount={scanCount} currentFile={scanFile} />}</AnimatePresence>
+      <AnimatePresence>{scanning && <ScanOverlay label={scanLabel} fileCount={scanCount} currentFile={scanFile} isOcr={isOcr} />}</AnimatePresence>
 
       <div className="relative z-10 max-w-2xl mx-auto px-6 pt-16 pb-16">
 
@@ -504,18 +507,31 @@ function App() {
         </motion.div>
 
         {/* Buttons */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="flex gap-3 mb-8">
-          <button onClick={handleScan} disabled={scanning}
-            className="group/btn relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/80 hover:bg-white/[0.1] hover:border-white/[0.18] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_20px_rgba(255,255,255,0.06),0_0_40px_rgba(255,255,255,0.02)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-            <FolderSearch size={14} /> Index folder
-            <div className="absolute inset-0 rounded-xl bg-white/[0.05] opacity-0 group-hover/btn:opacity-100 blur-xl transition-opacity duration-300 pointer-events-none" />
-          </button>
-          <button onClick={handleGoogleDrive} disabled={scanning}
-            className="group/btn relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/80 hover:bg-white/[0.1] hover:border-white/[0.18] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_20px_rgba(255,255,255,0.06),0_0_40px_rgba(255,255,255,0.02)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 19.5h20L12 2z"/><path d="M2 19.5l5-8.5"/><path d="M22 19.5l-5-8.5"/><path d="M7 11h10"/></svg>
-            Google Drive
-            <div className="absolute inset-0 rounded-xl bg-white/[0.05] opacity-0 group-hover/btn:opacity-100 blur-xl transition-opacity duration-300 pointer-events-none" />
-          </button>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="flex flex-col items-center gap-3 mb-8">
+          <div className="flex gap-3">
+            <button onClick={handleScan} disabled={scanning}
+              className="group/btn relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/80 hover:bg-white/[0.1] hover:border-white/[0.18] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_20px_rgba(255,255,255,0.06),0_0_40px_rgba(255,255,255,0.02)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <FolderSearch size={14} /> Index folder
+              <div className="absolute inset-0 rounded-xl bg-white/[0.05] opacity-0 group-hover/btn:opacity-100 blur-xl transition-opacity duration-300 pointer-events-none" />
+            </button>
+            <button onClick={handleGoogleDrive} disabled={scanning}
+              className="group/btn relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/80 hover:bg-white/[0.1] hover:border-white/[0.18] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_20px_rgba(255,255,255,0.06),0_0_40px_rgba(255,255,255,0.02)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 19.5h20L12 2z"/><path d="M2 19.5l5-8.5"/><path d="M22 19.5l-5-8.5"/><path d="M7 11h10"/></svg>
+              Google Drive
+              <div className="absolute inset-0 rounded-xl bg-white/[0.05] opacity-0 group-hover/btn:opacity-100 blur-xl transition-opacity duration-300 pointer-events-none" />
+            </button>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer select-none group">
+            <div className="relative w-3.5 h-3.5">
+              <input type="checkbox" checked={!ocrEnabled}
+                onChange={(e) => { const v = !e.target.checked; setOcrEnabled(v); localStorage.setItem('ocular_ocr_enabled', v) }}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+              <div className={`w-3.5 h-3.5 rounded border transition-all duration-200 flex items-center justify-center ${!ocrEnabled ? 'bg-white/80 border-white/80' : 'border-white/20'}`}>
+                {!ocrEnabled && <svg className="w-2.5 h-2.5 text-black" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 6l3 3 5-5"/></svg>}
+              </div>
+            </div>
+            <span className="text-[11px] text-white/25 group-hover:text-white/40 transition-colors">Exclude images for faster indexing</span>
+          </label>
         </motion.div>
 
         {/* Browser support warning */}

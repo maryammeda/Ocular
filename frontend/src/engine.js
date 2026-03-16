@@ -34,19 +34,35 @@ async function getMammoth() {
   return _mammoth
 }
 
-// ── OCR with worker pool (lazy-loaded) ───────────────────
-const OCR_WORKERS = 4
+// ── OCR with single worker (lazy-loaded) ─────────────────
 let _ocrScheduler = null
+let _ocrIdleTimer = null
 async function getOcrScheduler() {
+  if (_ocrIdleTimer) { clearTimeout(_ocrIdleTimer); _ocrIdleTimer = null }
   if (!_ocrScheduler) {
     const Tesseract = await import('tesseract.js')
     _ocrScheduler = Tesseract.createScheduler()
-    for (let i = 0; i < OCR_WORKERS; i++) {
-      const worker = await Tesseract.createWorker('eng')
-      _ocrScheduler.addWorker(worker)
-    }
+    const worker = await Tesseract.createWorker('eng')
+    await worker.setParameters({
+      tessedit_pageseg_mode: '6',
+      tessjs_create_hocr: '0',
+      tessjs_create_tsv: '0',
+      tessjs_create_box: '0',
+      tessjs_create_unlv: '0',
+      tessjs_create_osd: '0',
+    })
+    _ocrScheduler.addWorker(worker)
   }
   return _ocrScheduler
+}
+function scheduleOcrCleanup() {
+  if (_ocrIdleTimer) clearTimeout(_ocrIdleTimer)
+  _ocrIdleTimer = setTimeout(async () => {
+    if (_ocrScheduler) {
+      await _ocrScheduler.terminate()
+      _ocrScheduler = null
+    }
+  }, 60000)
 }
 
 // ── Engine ────────────────────────────────────────────────
@@ -89,7 +105,7 @@ class SearchEngine {
   }
 
   // ── Scan a single directory ──────────────────────────────
-  async scanDirectory(dirHandle, onProgress) {
+  async scanDirectory(dirHandle, onProgress, { ocrEnabled = true } = {}) {
     let count = 0
 
     const walk = async (handle, pathPrefix) => {
@@ -111,12 +127,13 @@ class SearchEngine {
             let imageData = null
 
             if (isImage) {
-              if (file.size < 10 * 1024 * 1024) {
-                imageData = await fileToDataURL(file)
-                const scheduler = await getOcrScheduler()
-                const { data } = await scheduler.addJob('recognize', file)
-                content = data.text?.trim() || ''
-              }
+              if (!ocrEnabled) continue
+              if (file.size < 5 * 1024 || file.size > 5 * 1024 * 1024) continue
+              imageData = await fileToDataURL(file)
+              onProgress?.(count, entry.name, true)
+              const scheduler = await getOcrScheduler()
+              const { data } = await scheduler.addJob('recognize', file)
+              content = data.text?.trim() || ''
             } else {
               content = await this._extractContent(file, type)
             }
@@ -138,7 +155,7 @@ class SearchEngine {
 
             await this._save(doc)
             count++
-            onProgress?.(count, entry.name)
+            onProgress?.(count, entry.name, false)
           } catch (e) {
             console.warn(`Skipped ${entry.name}:`, e.message)
           }
@@ -147,18 +164,19 @@ class SearchEngine {
     }
 
     await walk(dirHandle, dirHandle.name)
+    scheduleOcrCleanup()
     return count
   }
 
   // ── Quick Scan: Desktop / Downloads / Documents ──────────
-  async quickScan(dirHandle, onProgress) {
+  async quickScan(dirHandle, onProgress, opts = {}) {
     const targets = ['Desktop', 'Downloads', 'Documents']
     let totalCount = 0
     const scanned = []
 
     for await (const entry of dirHandle.values()) {
       if (entry.kind === 'directory' && targets.includes(entry.name)) {
-        const count = await this.scanDirectory(entry, onProgress)
+        const count = await this.scanDirectory(entry, onProgress, opts)
         totalCount += count
         scanned.push(entry.name)
       }
@@ -276,6 +294,7 @@ class SearchEngine {
     try {
       const scheduler = await getOcrScheduler()
       const { data } = await scheduler.addJob('recognize', dataUrl)
+      scheduleOcrCleanup()
       return data.text?.trim() || ''
     } catch (e) {
       console.warn('OCR failed:', e.message)
@@ -303,18 +322,17 @@ class SearchEngine {
   }
 
   // ── Process dropped items (files & folders) ──────────────
-  async scanDroppedItems(items, onProgress) {
+  async scanDroppedItems(items, onProgress, { ocrEnabled = true } = {}) {
     let count = 0
     for (const item of items) {
       try {
         const handle = await item.getAsFileSystemHandle()
         if (!handle) continue
         if (handle.kind === 'directory') {
-          count += await this.scanDirectory(handle, (c, f) => {
-            onProgress?.(count + c, f)
-          })
+          count += await this.scanDirectory(handle, (c, f, isOcr) => {
+            onProgress?.(count + c, f, isOcr)
+          }, { ocrEnabled })
         } else {
-          // Single file
           const dotIdx = handle.name.lastIndexOf('.')
           if (dotIdx === -1) continue
           const ext = handle.name.slice(dotIdx).toLowerCase()
@@ -326,12 +344,13 @@ class SearchEngine {
           let content = ''
           let imageData = null
           if (isImage) {
-            if (file.size < 10 * 1024 * 1024) {
-              imageData = await fileToDataURL(file)
-              const scheduler = await getOcrScheduler()
-              const { data } = await scheduler.addJob('recognize', file)
-              content = data.text?.trim() || ''
-            }
+            if (!ocrEnabled) continue
+            if (file.size < 5 * 1024 || file.size > 5 * 1024 * 1024) continue
+            imageData = await fileToDataURL(file)
+            onProgress?.(count, handle.name, true)
+            const scheduler = await getOcrScheduler()
+            const { data } = await scheduler.addJob('recognize', file)
+            content = data.text?.trim() || ''
           } else {
             content = await this._extractContent(file, type)
           }
@@ -348,12 +367,13 @@ class SearchEngine {
           else this.documents.push(doc)
           await this._save(doc)
           count++
-          onProgress?.(count, handle.name)
+          onProgress?.(count, handle.name, false)
         }
       } catch (e) {
         console.warn('Drop item skipped:', e.message)
       }
     }
+    scheduleOcrCleanup()
     return count
   }
 }
