@@ -7,7 +7,7 @@ import { authorize, listFiles, downloadFile, pickFiles } from './gdrive'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || ''
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 const fileIconMap = {
   py: FileCode, js: FileCode, jsx: FileCode, ts: FileCode, tsx: FileCode,
@@ -272,7 +272,7 @@ function ChatDrawer({ open, onClose, indexedCount, onSearchFile }) {
 
       if (!sources.length) throw new Error('No relevant documents found. Index some files first.')
 
-      const res = await fetch(`${API_URL}/chat`, {
+      const res = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: q, sources }),
