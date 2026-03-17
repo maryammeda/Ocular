@@ -143,11 +143,21 @@ def serve_file(path: str):
     return FileResponse(path, media_type=media_type or "application/octet-stream")
 
 
-@app.get("/chat")
-def chat(question: str):
+class ChatSource(BaseModel):
+    filename: str
+    filepath: str
+    content: str
+
+class ChatRequest(BaseModel):
+    question: str
+    sources: list[ChatSource]
+
+@app.post("/chat")
+def chat(request: ChatRequest):
     from backend.rag import stream_response
+    sources = [s.model_dump() for s in request.sources]
     return StreamingResponse(
-        stream_response(question),
+        stream_response(request.question, sources),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

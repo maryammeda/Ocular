@@ -1,6 +1,5 @@
 import os
 import json
-from backend.db import DocumentDB
 
 SYSTEM_PROMPT = """You are Ocular AI, an assistant that answers questions using ONLY the provided document excerpts.
 
@@ -13,33 +12,13 @@ Rules:
 """
 
 
-def retrieve_context(query):
-    """Search the FTS5 index and return top 5 results with full content."""
-    db = DocumentDB()
-    results = db.search(query)
-    db.close()
-
-    sources = []
-    for filename, filepath, snippet, filetype, count in results[:5]:
-        db2 = DocumentDB()
-        row = db2.get_document(filepath)
-        db2.close()
-        if row:
-            _, _, content, _ = row
-            sources.append({
-                "filename": filename,
-                "filepath": filepath,
-                "content": (content or "")[:3000],
-            })
-    return sources
-
-
 def build_prompt(question, sources):
     """Assemble the prompt with document excerpts and user question."""
     context_parts = []
     for i, src in enumerate(sources, 1):
+        content = (src.get("content") or "")[:3000]
         context_parts.append(
-            f"--- Source {i}: {src['filename']} ---\n{src['content']}\n"
+            f"--- Source {i}: {src['filename']} ---\n{content}\n"
         )
     context_block = "\n".join(context_parts)
 
@@ -52,19 +31,22 @@ def build_prompt(question, sources):
 User question: {question}"""
 
 
-def stream_response(question):
-    """Generator yielding SSE events: sources, tokens, done/error."""
+def stream_response(question, sources):
+    """Generator yielding SSE events: sources, tokens, done/error.
+
+    `sources` is a list of dicts with keys: filename, filepath, content
+    (sent from the frontend which holds docs in IndexedDB).
+    """
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
-        yield f"event: error\ndata: {json.dumps({'message': 'GEMINI_API_KEY not set. Add it to .env in the project root.'})}\n\n"
+        yield f"event: error\ndata: {json.dumps({'message': 'Ocular AI is not configured yet. The server admin needs to set GEMINI_API_KEY.'})}\n\n"
         return
 
-    sources = retrieve_context(question)
     if not sources:
-        yield f"event: error\ndata: {json.dumps({'message': 'No indexed documents found. Index some files first.'})}\n\n"
+        yield f"event: error\ndata: {json.dumps({'message': 'No relevant documents found. Index some files first.'})}\n\n"
         return
 
-    # Send sources first
+    # Send source metadata first
     source_list = [{"filename": s["filename"], "filepath": s["filepath"]} for s in sources]
     yield f"event: sources\ndata: {json.dumps(source_list)}\n\n"
 
