@@ -93,3 +93,7 @@ def chat(request: ChatRequest):
 @app.get("/api/chat")
 def health():
     return {"status": "ok", "service": "Ocular AI"}
+
+
+from mangum import Mangum
+handler = Mangum(app)
