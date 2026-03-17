@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import httpx
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
@@ -62,33 +63,41 @@ def stream_response(question, sources):
     prompt = build_prompt(question, sources)
 
     try:
-        with httpx.stream(
-            "POST",
-            f"{GEMINI_URL}?alt=sse&key={api_key}",
-            json={"contents": [{"parts": [{"text": prompt}]}]},
-            headers={"Content-Type": "application/json"},
-            timeout=60.0,
-        ) as response:
-            if response.status_code != 200:
-                error_body = response.read().decode()
-                yield f"event: error\ndata: {json.dumps({'message': f'Gemini API error: {response.status_code}'})}\n\n"
+        for attempt in range(3):
+            with httpx.stream(
+                "POST",
+                f"{GEMINI_URL}?alt=sse&key={api_key}",
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                headers={"Content-Type": "application/json"},
+                timeout=60.0,
+            ) as response:
+                if response.status_code == 429 and attempt < 2:
+                    response.read()
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                if response.status_code != 200:
+                    response.read()
+                    yield f"event: error\ndata: {json.dumps({'message': f'Gemini API error: {response.status_code}'})}\n\n"
+                    return
+
+                for line in response.iter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[6:]
+                    if data.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                        text = chunk.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        if text:
+                            yield f"event: token\ndata: {json.dumps({'text': text})}\n\n"
+                    except (json.JSONDecodeError, IndexError, KeyError):
+                        continue
+
+                yield "event: done\ndata: {}\n\n"
                 return
 
-            for line in response.iter_lines():
-                if not line.startswith("data: "):
-                    continue
-                data = line[6:]
-                if data.strip() == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(data)
-                    text = chunk.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                    if text:
-                        yield f"event: token\ndata: {json.dumps({'text': text})}\n\n"
-                except (json.JSONDecodeError, IndexError, KeyError):
-                    continue
-
-        yield "event: done\ndata: {}\n\n"
+        yield f"event: error\ndata: {json.dumps({'message': 'Rate limited by Gemini API. Please wait a moment and try again.'})}\n\n"
 
     except Exception as e:
         error_msg = str(e)

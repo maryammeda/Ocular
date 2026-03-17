@@ -404,6 +404,19 @@ function ChatDrawer({ open, onClose, indexedCount, onSearchFile }) {
                       <p className="text-[13px] text-white/80 leading-relaxed">{msg.text}</p>
                     ) : (
                       <div className="space-y-2">
+                        {/* Source chips — always shown if available */}
+                        {msg.sources && msg.sources.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {msg.sources.map((src, j) => (
+                              <button key={j} onClick={() => onSearchFile(src.filename)}
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] bg-white/[0.05] border border-white/[0.08] text-white/40 hover:text-white/70 hover:bg-white/[0.1] hover:border-white/[0.15] transition-all">
+                                <FileText size={10} />
+                                {src.filename}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
                         {msg.isError ? (
                           <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20">
                             <AlertCircle size={14} className="text-red-400/70 mt-0.5 shrink-0" />
@@ -422,19 +435,6 @@ function ChatDrawer({ open, onClose, indexedCount, onSearchFile }) {
                         ) : loading && i === messages.length - 1 ? (
                           <TypingDots />
                         ) : null}
-
-                        {/* Source chips */}
-                        {msg.sources && msg.sources.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 pt-1">
-                            {msg.sources.map((src, j) => (
-                              <button key={j} onClick={() => onSearchFile(src.filename)}
-                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] bg-white/[0.05] border border-white/[0.08] text-white/40 hover:text-white/70 hover:bg-white/[0.1] hover:border-white/[0.15] transition-all">
-                                <FileText size={10} />
-                                {src.filename}
-                              </button>
-                            ))}
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
