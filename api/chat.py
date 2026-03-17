@@ -18,7 +18,8 @@ Rules:
 - Use bullet points or numbered lists when listing multiple items.
 """
 
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 
 
 class ChatSource(BaseModel):
@@ -32,15 +33,13 @@ class ChatRequest(BaseModel):
     sources: list[ChatSource]
 
 
-def build_prompt(question, sources):
+def build_context(question, sources):
     context_parts = []
     for i, src in enumerate(sources, 1):
         content = (src.get("content") or "")[:3000]
         context_parts.append(f"--- Source {i}: {src['filename']} ---\n{content}\n")
     context_block = "\n".join(context_parts)
-    return f"""{SYSTEM_PROMPT}
-
-== DOCUMENT SOURCES ==
+    return f"""== DOCUMENT SOURCES ==
 {context_block}
 == END SOURCES ==
 
@@ -48,7 +47,7 @@ User question: {question}"""
 
 
 def stream_response(question, sources):
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     if not api_key:
         yield f"event: error\ndata: {json.dumps({'message': 'Ocular AI is not configured yet.'})}\n\n"
         return
@@ -60,15 +59,25 @@ def stream_response(question, sources):
     source_list = [{"filename": s["filename"], "filepath": s["filepath"]} for s in sources]
     yield f"event: sources\ndata: {json.dumps(source_list)}\n\n"
 
-    prompt = build_prompt(question, sources)
+    user_content = build_context(question, sources)
 
     try:
         for attempt in range(3):
             with httpx.stream(
                 "POST",
-                f"{GEMINI_URL}?alt=sse&key={api_key}",
-                json={"contents": [{"parts": [{"text": prompt}]}]},
-                headers={"Content-Type": "application/json"},
+                OPENROUTER_URL,
+                json={
+                    "model": MODEL,
+                    "stream": True,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_content},
+                    ],
+                },
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
                 timeout=60.0,
             ) as response:
                 if response.status_code == 429 and attempt < 2:
@@ -77,7 +86,7 @@ def stream_response(question, sources):
                     continue
                 if response.status_code != 200:
                     response.read()
-                    yield f"event: error\ndata: {json.dumps({'message': f'Gemini API error: {response.status_code}'})}\n\n"
+                    yield f"event: error\ndata: {json.dumps({'message': f'API error: {response.status_code}'})}\n\n"
                     return
 
                 for line in response.iter_lines():
@@ -88,7 +97,8 @@ def stream_response(question, sources):
                         break
                     try:
                         chunk = json.loads(data)
-                        text = chunk.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        text = delta.get("content", "")
                         if text:
                             yield f"event: token\ndata: {json.dumps({'text': text})}\n\n"
                     except (json.JSONDecodeError, IndexError, KeyError):
@@ -97,12 +107,12 @@ def stream_response(question, sources):
                 yield "event: done\ndata: {}\n\n"
                 return
 
-        yield f"event: error\ndata: {json.dumps({'message': 'Rate limited by Gemini API. Please wait a moment and try again.'})}\n\n"
+        yield f"event: error\ndata: {json.dumps({'message': 'Rate limited. Please wait a moment and try again.'})}\n\n"
 
     except Exception as e:
         error_msg = str(e)
         if "429" in error_msg or "quota" in error_msg.lower():
-            error_msg = "Rate limited by Gemini API. Please wait a moment and try again."
+            error_msg = "Rate limited. Please wait a moment and try again."
         yield f"event: error\ndata: {json.dumps({'message': error_msg})}\n\n"
 
 
