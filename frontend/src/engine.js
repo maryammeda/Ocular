@@ -257,6 +257,51 @@ class SearchEngine {
     return s.replace(new RegExp(esc, 'gi'), '<b>$&</b>')
   }
 
+  // ── Fuzzy retrieval for chat/RAG ─────────────────────────
+  retrieve(query, limit = 5) {
+    if (!query.trim()) return []
+    const stopWords = new Set([
+      'a','an','the','is','are','was','were','be','been','being','have','has','had',
+      'do','does','did','will','would','could','should','can','may','might','shall',
+      'about','above','after','again','all','also','am','and','any','at','because',
+      'before','between','both','but','by','down','during','each','few','for','from',
+      'further','get','got','he','her','here','hers','herself','him','himself','his',
+      'how','i','if','in','into','it','its','itself','just','me','more','most','my',
+      'myself','no','nor','not','now','of','off','on','once','only','or','other','our',
+      'ours','ourselves','out','over','own','same','she','so','some','such','than',
+      'that','their','theirs','them','themselves','then','there','these','they','this',
+      'those','through','to','too','under','until','up','very','we','what','when',
+      'where','which','while','who','whom','why','with','you','your','yours',
+    ])
+    const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !stopWords.has(w))
+    if (!words.length) return this.documents.slice(0, limit).map(d => ({
+      filename: d.filename, filepath: d.filepath, snippet: (d.content || '').slice(0, 200),
+      filetype: d.filetype, matches: 0, isImage: d.isImage, imageData: d.imageData,
+    }))
+
+    const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    const pattern = new RegExp(`\\b(${escaped.join('|')})`, 'gi')
+    const results = []
+
+    for (const doc of this.documents) {
+      const content = doc.content || ''
+      const contentMatches = content.match(pattern)
+      const filenameMatches = doc.filename.match(pattern)
+      const score = (contentMatches?.length || 0) + (filenameMatches?.length || 0) * 3
+      if (score > 0) {
+        results.push({
+          filename: doc.filename, filepath: doc.filepath,
+          snippet: this._snippet(content, words[0]),
+          filetype: doc.filetype, matches: score,
+          isImage: doc.isImage, imageData: doc.imageData,
+        })
+      }
+    }
+
+    results.sort((a, b) => b.matches - a.matches)
+    return results.slice(0, limit)
+  }
+
   // ── Preview ──────────────────────────────────────────────
   getDocument(filepath) {
     return this.documents.find(d => d.id === filepath) || null

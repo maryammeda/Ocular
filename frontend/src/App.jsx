@@ -260,8 +260,8 @@ function ChatDrawer({ open, onClose, indexedCount, onSearchFile }) {
 
     try {
       // Gather relevant documents from client-side IndexedDB
-      const searchResults = engine.search(q)
-      const sources = searchResults.slice(0, 5).map(r => {
+      const searchResults = engine.retrieve(q, 5)
+      const sources = searchResults.map(r => {
         const doc = engine.getDocument(r.filepath)
         return {
           filename: r.filename,
