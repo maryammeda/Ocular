@@ -1,5 +1,6 @@
 import os
 import json
+import httpx
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -15,6 +16,8 @@ Rules:
 - Keep answers concise and well-formatted using markdown.
 - Use bullet points or numbered lists when listing multiple items.
 """
+
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent"
 
 
 class ChatSource(BaseModel):
@@ -59,17 +62,31 @@ def stream_response(question, sources):
     prompt = build_prompt(question, sources)
 
     try:
-        from google import genai
+        with httpx.stream(
+            "POST",
+            f"{GEMINI_URL}?alt=sse&key={api_key}",
+            json={"contents": [{"parts": [{"text": prompt}]}]},
+            headers={"Content-Type": "application/json"},
+            timeout=60.0,
+        ) as response:
+            if response.status_code != 200:
+                error_body = response.read().decode()
+                yield f"event: error\ndata: {json.dumps({'message': f'Gemini API error: {response.status_code}'})}\n\n"
+                return
 
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content_stream(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
-
-        for chunk in response:
-            if chunk.text:
-                yield f"event: token\ndata: {json.dumps({'text': chunk.text})}\n\n"
+            for line in response.iter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    text = chunk.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                    if text:
+                        yield f"event: token\ndata: {json.dumps({'text': text})}\n\n"
+                except (json.JSONDecodeError, IndexError, KeyError):
+                    continue
 
         yield "event: done\ndata: {}\n\n"
 
@@ -93,7 +110,3 @@ def chat(request: ChatRequest):
 @app.get("/api/chat")
 def health():
     return {"status": "ok", "service": "Ocular AI"}
-
-
-from mangum import Mangum
-handler = Mangum(app)
