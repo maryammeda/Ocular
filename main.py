@@ -2,14 +2,17 @@ import os
 import mimetypes
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from backend.db import DocumentDB
 from backend.crawler import FileCrawler
 from backend.watcher import FileWatcher
+
+load_dotenv()
 
 app = FastAPI(title="Neural Search API")
 
@@ -138,6 +141,16 @@ def serve_file(path: str):
         return {"status": "error", "message": "File not found"}
     media_type, _ = mimetypes.guess_type(path)
     return FileResponse(path, media_type=media_type or "application/octet-stream")
+
+
+@app.get("/chat")
+def chat(question: str):
+    from backend.rag import stream_response
+    return StreamingResponse(
+        stream_response(question),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/watched")

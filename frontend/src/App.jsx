@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Search, FolderSearch, Upload, Loader2, FileText, FileCode, FileImage, File, CheckCircle2, AlertCircle, X, Orbit, Scan, Clock, Trash2 } from 'lucide-react'
+import { Search, FolderSearch, Upload, Loader2, FileText, FileCode, FileImage, File, CheckCircle2, AlertCircle, X, Orbit, Scan, Clock, Trash2, Sparkles, Send, Plus, Bot, User } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import ReactMarkdown from 'react-markdown'
 import { engine } from './engine'
 import { authorize, listFiles, downloadFile, pickFiles } from './gdrive'
 
@@ -210,6 +211,246 @@ function RotatingTips() {
   )
 }
 
+// ── Chat History ──────────────────────────────────────────
+const CHK = 'ocular_chat_messages'
+function getChatHistory() { try { return JSON.parse(localStorage.getItem(CHK)) || [] } catch { return [] } }
+function saveChatHistory(msgs) { localStorage.setItem(CHK, JSON.stringify(msgs.slice(-50))) }
+
+// ── Typing Indicator ──────────────────────────────────────
+function TypingDots() {
+  return (
+    <div className="flex items-center gap-1 py-2 px-1">
+      {[0, 1, 2].map(i => (
+        <motion.div key={i} className="w-1.5 h-1.5 rounded-full bg-white/40"
+          animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1, 0.8] }}
+          transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }} />
+      ))}
+    </div>
+  )
+}
+
+// ── Chat Drawer ───────────────────────────────────────────
+function ChatDrawer({ open, onClose, indexedCount, onSearchFile }) {
+  const [messages, setMessages] = useState(getChatHistory)
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const endRef = useRef(null)
+  const inputRef = useRef(null)
+
+  useEffect(() => { saveChatHistory(messages) }, [messages])
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 300)
+  }, [open])
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, loading])
+
+  const newChat = () => { setMessages([]); localStorage.removeItem(CHK) }
+
+  const sendMessage = async () => {
+    const q = input.trim()
+    if (!q || loading) return
+    setInput('')
+
+    const userMsg = { role: 'user', text: q }
+    const aiMsg = { role: 'ai', text: '', sources: [] }
+    setMessages(prev => [...prev, userMsg, aiMsg])
+    setLoading(true)
+
+    try {
+      const res = await fetch(`http://localhost:8000/chat?question=${encodeURIComponent(q)}`)
+      if (!res.ok) throw new Error(`Server error: ${res.status}`)
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        let currentEvent = ''
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim()
+          } else if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            try {
+              const parsed = JSON.parse(data)
+              if (currentEvent === 'sources') {
+                setMessages(prev => {
+                  const updated = [...prev]
+                  updated[updated.length - 1] = { ...updated[updated.length - 1], sources: parsed }
+                  return updated
+                })
+              } else if (currentEvent === 'token') {
+                setMessages(prev => {
+                  const updated = [...prev]
+                  const last = updated[updated.length - 1]
+                  updated[updated.length - 1] = { ...last, text: last.text + parsed.text }
+                  return updated
+                })
+              } else if (currentEvent === 'error') {
+                setMessages(prev => {
+                  const updated = [...prev]
+                  updated[updated.length - 1] = { ...updated[updated.length - 1], text: parsed.message, isError: true }
+                  return updated
+                })
+              }
+            } catch { /* skip malformed JSON */ }
+            currentEvent = ''
+          }
+        }
+      }
+    } catch (err) {
+      setMessages(prev => {
+        const updated = [...prev]
+        updated[updated.length - 1] = {
+          ...updated[updated.length - 1],
+          text: err.message || 'Failed to connect to backend.',
+          isError: true,
+        }
+        return updated
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleKey = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          {/* Backdrop */}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+
+          {/* Drawer */}
+          <motion.div
+            initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-md flex flex-col bg-black/80 backdrop-blur-3xl border-l border-white/15 shadow-[-20px_0_60px_rgba(0,0,0,0.5)]"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.08]">
+              <div className="flex items-center gap-2.5">
+                <Sparkles size={16} className="text-white/60" />
+                <span className="text-white/90 font-medium text-[15px]">Ocular AI</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={newChat}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all">
+                  <Plus size={12} /> New Chat
+                </button>
+                <button onClick={onClose}
+                  className="text-white/30 hover:text-white/60 transition p-1">
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 scrollbar-thin">
+              {messages.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-full text-center gap-4">
+                  <div className="relative">
+                    <Sparkles size={28} className="text-white/15" />
+                    <div className="absolute -inset-4 bg-white/5 rounded-full blur-2xl" />
+                  </div>
+                  {indexedCount > 0 ? (
+                    <>
+                      <p className="text-white/30 text-sm">Ask anything about your files</p>
+                      <p className="text-white/15 text-xs">{indexedCount} files indexed and searchable</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-white/30 text-sm">Index some files first</p>
+                      <p className="text-white/15 text-xs">Use "Index folder" to add documents, then ask questions here</p>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {messages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] ${msg.role === 'user'
+                    ? 'bg-white/[0.1] border border-white/[0.12] rounded-2xl rounded-br-md px-4 py-2.5'
+                    : 'w-full'}`}>
+                    {msg.role === 'user' ? (
+                      <p className="text-[13px] text-white/80 leading-relaxed">{msg.text}</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {msg.isError ? (
+                          <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20">
+                            <AlertCircle size={14} className="text-red-400/70 mt-0.5 shrink-0" />
+                            <p className="text-[13px] text-red-300/70 leading-relaxed">{msg.text}</p>
+                          </div>
+                        ) : msg.text ? (
+                          <div className="text-[13px] text-white/70 leading-relaxed prose prose-invert prose-sm max-w-none
+                            [&_p]:mb-2 [&_p:last-child]:mb-0
+                            [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5
+                            [&_code]:bg-white/[0.08] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[12px]
+                            [&_pre]:bg-white/[0.05] [&_pre]:border [&_pre]:border-white/[0.08] [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto
+                            [&_strong]:text-white/90 [&_h1]:text-white/90 [&_h2]:text-white/90 [&_h3]:text-white/90
+                            [&_a]:text-white/60 [&_a]:underline">
+                            <ReactMarkdown>{msg.text}</ReactMarkdown>
+                          </div>
+                        ) : loading && i === messages.length - 1 ? (
+                          <TypingDots />
+                        ) : null}
+
+                        {/* Source chips */}
+                        {msg.sources && msg.sources.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {msg.sources.map((src, j) => (
+                              <button key={j} onClick={() => onSearchFile(src.filename)}
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] bg-white/[0.05] border border-white/[0.08] text-white/40 hover:text-white/70 hover:bg-white/[0.1] hover:border-white/[0.15] transition-all">
+                                <FileText size={10} />
+                                {src.filename}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {loading && messages.length > 0 && messages[messages.length - 1]?.text && (
+                <div className="flex justify-start"><TypingDots /></div>
+              )}
+
+              <div ref={endRef} />
+            </div>
+
+            {/* Input */}
+            <div className="px-4 py-3 border-t border-white/[0.08]">
+              <div className="relative flex items-center gap-2">
+                <input ref={inputRef} type="text" value={input}
+                  onChange={(e) => setInput(e.target.value)} onKeyDown={handleKey}
+                  placeholder={indexedCount > 0 ? "Ask about your files..." : "Index files first..."}
+                  disabled={loading || indexedCount === 0}
+                  className="flex-1 bg-white/[0.06] border border-white/[0.1] rounded-xl py-3 px-4 text-[13px] text-white placeholder-white/20 focus:outline-none focus:border-white/[0.2] transition-all disabled:opacity-30" />
+                <button onClick={sendMessage} disabled={!input.trim() || loading || indexedCount === 0}
+                  className="p-3 rounded-xl bg-white/[0.08] border border-white/[0.1] text-white/40 hover:text-white/80 hover:bg-white/[0.14] transition-all disabled:opacity-20 disabled:cursor-not-allowed">
+                  <Send size={16} />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  )
+}
+
 // ── App ────────────────────────────────────────────────────
 function App() {
   const [query, setQuery] = useState('')
@@ -231,6 +472,7 @@ function App() {
   const [showDriveMenu, setShowDriveMenu] = useState(false)
   const [showFullDriveSetup, setShowFullDriveSetup] = useState(false)
   const [userClientId, setUserClientId] = useState(() => localStorage.getItem('ocular_user_gdrive_client_id') || '')
+  const [chatOpen, setChatOpen] = useState(false)
   const inputRef = useRef(null)
   const historyRef = useRef(null)
   const dragCounter = useRef(0)
@@ -707,6 +949,24 @@ function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Chat FAB */}
+      <motion.button
+        onClick={() => setChatOpen(true)}
+        initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.5, type: 'spring' }}
+        whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
+        className="fixed bottom-6 right-6 z-30 w-14 h-14 rounded-full bg-white/[0.1] backdrop-blur-2xl border border-white/[0.15] flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.18] hover:border-white/[0.3] hover:shadow-[0_0_30px_rgba(255,255,255,0.15),0_0_60px_rgba(255,255,255,0.05)] transition-all duration-300 shadow-[0_4px_20px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.08)]"
+      >
+        <Sparkles size={20} />
+      </motion.button>
+
+      {/* Chat Drawer */}
+      <ChatDrawer
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        indexedCount={indexedCount}
+        onSearchFile={(filename) => { setChatOpen(false); setQuery(filename); runSearch(filename) }}
+      />
     </div>
   )
 }
