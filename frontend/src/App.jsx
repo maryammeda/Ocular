@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Search, FolderSearch, Upload, Loader2, FileText, FileCode, FileImage, File, CheckCircle2, AlertCircle, X, Orbit, Scan, Clock, Trash2, Sparkles, Send, Plus, Bot, User } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { Search, FolderOpen, Upload, Loader2, FileText, FileCode, FileImage, File, CheckCircle2, AlertCircle, X, Scan, Clock, Trash2, Sparkles, Send, Plus, MessageCircle, HardDrive, Cloud, ArrowUp, ArrowUpRight, ScanLine, Eye, ChevronRight } from 'lucide-react'
+import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import { engine } from './engine'
 import { authorize, listFiles, downloadFile, pickFiles } from './gdrive'
+import ApertureCanvas from './ApertureCanvas'
+import ParticleCanvas from './ParticleCanvas'
+import ParticleTitle from './ParticleTitle'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || ''
@@ -15,7 +18,7 @@ const fileIconMap = {
   md: FileText, txt: FileText, pdf: FileText, docx: FileText, doc: FileText, csv: FileText,
   png: FileImage, jpg: FileImage, jpeg: FileImage, gif: FileImage, svg: FileImage, webp: FileImage,
 }
-function getFileIcon(filename, size = 18) {
+function getFileIcon(filename, size = 16) {
   const Icon = fileIconMap[filename.split('.').pop().toLowerCase()] || File
   return <Icon size={size} />
 }
@@ -38,11 +41,13 @@ function Toast({ message, type, onClose }) {
   useEffect(() => { const t = setTimeout(onClose, 4000); return () => clearTimeout(t) }, [onClose])
   return (
     <motion.div
-      initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-      className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-2xl bg-white/10 backdrop-blur-2xl border border-white/15 shadow-[0_8px_40px_rgba(0,0,0,0.3),0_0_30px_rgba(255,255,255,0.05)]"
+      initial={{ opacity: 0, x: 60 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 60 }}
+      className="fixed top-6 right-6 z-[70] flex items-center gap-3 px-5 py-3.5 rounded-2xl liquid-glass-strong max-w-sm"
     >
-      {type === 'success' ? <CheckCircle2 size={16} className="text-white" /> : <AlertCircle size={16} className="text-white/50" />}
-      <span className="text-sm text-white/90">{message}</span>
+      {type === 'success'
+        ? <CheckCircle2 size={16} className="text-white/70 shrink-0" />
+        : <AlertCircle size={16} className="text-white/70 shrink-0" />}
+      <span className="text-sm text-white/80" style={{ fontWeight: 300 }}>{message}</span>
       <button onClick={onClose} className="ml-1 text-white/30 hover:text-white transition"><X size={14} /></button>
     </motion.div>
   )
@@ -52,30 +57,35 @@ function Toast({ message, type, onClose }) {
 function ScanOverlay({ label, fileCount, currentFile, isOcr }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-40 bg-black/70 backdrop-blur-xl flex items-center justify-center">
-      <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
-        className="relative bg-white/10 backdrop-blur-2xl border border-white/15 rounded-3xl p-12 flex flex-col items-center gap-6 shadow-[0_20px_80px_rgba(0,0,0,0.4),0_0_100px_rgba(255,255,255,0.05)]">
-        <div className="absolute -inset-4 rounded-[2rem] bg-white/[0.04] blur-3xl pointer-events-none" />
-        <div className="relative flex items-center justify-center">
-          <motion.div className="absolute w-20 h-20 rounded-full border border-white/25"
-            animate={{ scale: [1, 1.8, 1], opacity: [0.4, 0, 0.4] }}
-            transition={{ duration: 2, repeat: Infinity }} />
-          <motion.div className="absolute w-16 h-16 rounded-full border border-white/15"
-            animate={{ scale: [1, 1.5, 1], opacity: [0.3, 0, 0.3] }}
-            transition={{ duration: 2, repeat: Infinity, delay: 0.5 }} />
-          <Scan className="text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]" size={24} />
+      className="fixed inset-0 z-40 bg-black/80 backdrop-blur-2xl flex items-center justify-center">
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        className="flex flex-col items-center gap-8">
+        {/* Orbital spinner */}
+        <div className="relative w-16 h-16">
+          <motion.svg viewBox="0 0 48 48" className="absolute inset-0 w-full h-full"
+            animate={{ rotate: 360 }} transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}>
+            <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
+            <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1"
+              strokeDasharray="30 95" strokeLinecap="round" />
+          </motion.svg>
+          <motion.svg viewBox="0 0 48 48" className="absolute inset-0 w-full h-full"
+            animate={{ rotate: -360 }} transition={{ duration: 5, repeat: Infinity, ease: 'linear' }}>
+            <circle cx="24" cy="24" r="16" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" />
+            <circle cx="24" cy="24" r="16" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5"
+              strokeDasharray="20 80" strokeLinecap="round" />
+          </motion.svg>
         </div>
         <div className="text-center">
-          <p className="text-white font-medium text-lg">{label}</p>
-          <motion.p className="text-white/40 text-sm mt-1.5"
+          <p className="text-white text-lg" style={{ fontWeight: 400 }}>{label}</p>
+          <motion.p className="text-white/40 text-sm mt-2" style={{ fontWeight: 300 }}
             animate={{ opacity: [0.3, 0.7, 0.3] }} transition={{ duration: 2, repeat: Infinity }}>
-            {isOcr ? 'Running OCR — images take longer to process' : 'Crawling and indexing files...'}
+            {isOcr ? 'Running OCR on images...' : 'Crawling and indexing files...'}
           </motion.p>
           {fileCount > 0 && (
-            <p className="text-white/25 text-xs mt-3 font-mono">{fileCount} files indexed</p>
+            <p className="text-white/25 text-xs mt-4 font-mono">{fileCount} files indexed</p>
           )}
           {currentFile && (
-            <p className="text-white/15 text-[10px] mt-1 font-mono truncate max-w-[280px]">{currentFile}</p>
+            <p className="text-white/15 text-[10px] mt-1 font-mono truncate max-w-[300px]">{currentFile}</p>
           )}
         </div>
       </motion.div>
@@ -102,7 +112,7 @@ function ResultCard({ item, index, searchQuery }) {
     const t = text.length > 800 ? text.slice(0, 800) + '...' : text
     const parts = t.split(new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'))
     return parts.map((p, i) => p.toLowerCase() === searchQuery.toLowerCase()
-      ? <mark key={i} className="bg-white/20 text-white rounded-sm px-0.5">{p}</mark> : p)
+      ? <mark key={i} className="bg-white/15 text-white rounded-sm px-0.5">{p}</mark> : p)
   }
 
   const preview = doc.current
@@ -110,67 +120,79 @@ function ResultCard({ item, index, searchQuery }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.04, duration: 0.4 }}
+      transition={{ delay: index * 0.06, duration: 0.4 }}
+      whileHover={{ y: -4 }}
       onMouseEnter={onEnter} onMouseLeave={onLeave}
-      className="group relative rounded-2xl p-5 bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.2] hover:shadow-[0_4px_40px_rgba(255,255,255,0.06),0_0_80px_rgba(255,255,255,0.02)] backdrop-blur-sm transition-all duration-400 cursor-default"
+      className="group relative rounded-2xl p-6 cursor-default overflow-hidden"
+      style={{
+        background: 'linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))',
+        backdropFilter: 'blur(40px)',
+        border: '1px solid rgba(255,255,255,0.09)',
+        boxShadow: '0 1px 0 rgba(255,255,255,0.08) inset, 0 20px 60px rgba(0,0,0,0.5)',
+      }}
     >
-      {/* Top shine */}
-      <div className="absolute top-0 left-[10%] right-[10%] h-[1px] bg-gradient-to-r from-transparent via-white/15 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-      {/* Card glow */}
-      <div className="absolute -inset-1 rounded-2xl bg-white/[0.03] opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-500 pointer-events-none" />
+      {/* Shimmer line */}
+      <div className="absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-white/[0.18] to-transparent" />
+      {/* Hover glow */}
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"
+        style={{ background: 'radial-gradient(600px circle at 30% 20%, rgba(255,255,255,0.04), transparent 40%)' }} />
 
-      <div className="flex items-start gap-3.5">
-        <div className="mt-0.5 text-white/25 group-hover:text-white/60 transition-colors duration-300">
-          {getFileIcon(item.filename)}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2.5 mb-1.5">
-            <h3 className="font-medium text-white/80 group-hover:text-white truncate transition-colors">
+      <div className="relative">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-white/30 group-hover:text-white/60 transition-colors shrink-0">
+              {getFileIcon(item.filename)}
+            </span>
+            <h3 className="text-[0.9rem] text-white truncate" style={{ fontWeight: 500, letterSpacing: '-0.01em' }}>
               {item.filename}
             </h3>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-3">
             {item.filetype && (
-              <span className="text-[10px] uppercase tracking-widest text-white/30 bg-white/[0.06] px-2.5 py-0.5 rounded-full font-mono shrink-0 border border-white/[0.06]">
+              <span className="text-[0.65rem] uppercase tracking-widest text-white/40 border border-white/15 rounded-full px-2.5 py-0.5">
                 {item.filetype}
               </span>
             )}
             {item.matches > 1 && (
-              <span className="text-[10px] text-white/35 bg-white/[0.06] px-2.5 py-0.5 rounded-full font-mono shrink-0 border border-white/[0.06]">
-                {item.matches} mentions
+              <span className="text-[0.65rem] text-white/30 border border-white/10 rounded-full px-2.5 py-0.5">
+                {item.matches}
               </span>
             )}
           </div>
-          <p className="text-[11px] text-white/20 mb-2 truncate font-mono">{item.filepath}</p>
-          <p className="text-[13px] text-white/40 leading-relaxed [&>b]:text-white/90 [&>b]:font-medium"
-            dangerouslySetInnerHTML={{ __html: item.snippet }} />
-
-          <AnimatePresence>
-            {hovered && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3 }} className="overflow-hidden">
-                <div className="mt-3 pt-3 border-t border-white/[0.06]">
-                  {preview?.isImage && preview.imageData && (
-                    <div className="space-y-3">
-                      <img src={preview.imageData} alt={preview.filename}
-                        className="max-h-48 rounded-xl border border-white/10 object-contain" />
-                      {preview.content && <p className="text-xs text-white/30 leading-relaxed">{hl(preview.content)}</p>}
-                    </div>
-                  )}
-                  {preview && !preview.isImage && preview.content && (
-                    <div className="bg-white/[0.03] rounded-xl p-4 max-h-48 overflow-y-auto border border-white/[0.05]">
-                      <p className="text-xs text-white/35 leading-relaxed whitespace-pre-wrap font-mono">{hl(preview.content)}</p>
-                    </div>
-                  )}
-                  {preview && !preview.content && !preview.isImage && (
-                    <p className="text-xs text-white/20 py-2">No preview available</p>
-                  )}
-                  {preview?.content && (
-                    <p className="text-[10px] text-white/15 mt-2 font-mono">{preview.content.length.toLocaleString()} characters</p>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
+
+        <p className="text-[0.82rem] text-white/45 leading-relaxed [&>b]:text-white/90 [&>b]:font-medium" style={{ fontWeight: 300 }}
+          dangerouslySetInnerHTML={{ __html: item.snippet }} />
+
+        <p className="text-[10px] text-white/20 mt-3 font-mono truncate">{item.filepath}</p>
+
+        <AnimatePresence>
+          {hovered && (
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3 }} className="overflow-hidden">
+              <div className="mt-4 pt-4 border-t border-white/[0.06]">
+                {preview?.isImage && preview.imageData && (
+                  <div className="space-y-3">
+                    <img src={preview.imageData} alt={preview.filename}
+                      className="max-h-48 rounded-xl border border-white/10 object-contain" />
+                    {preview.content && <p className="text-xs text-white/30 leading-relaxed">{hl(preview.content)}</p>}
+                  </div>
+                )}
+                {preview && !preview.isImage && preview.content && (
+                  <div className="bg-white/[0.03] rounded-xl p-4 max-h-48 overflow-y-auto border border-white/[0.05]">
+                    <p className="text-xs text-white/35 leading-relaxed whitespace-pre-wrap font-mono">{hl(preview.content)}</p>
+                  </div>
+                )}
+                {preview && !preview.content && !preview.isImage && (
+                  <p className="text-xs text-white/20 py-2">No preview available</p>
+                )}
+                {preview?.content && (
+                  <p className="text-[10px] text-white/15 mt-2 font-mono">{preview.content.length.toLocaleString()} characters</p>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </motion.div>
   )
@@ -183,7 +205,7 @@ const TIPS = [
   'Connect Google Drive to search across all your cloud documents',
   'Your indexed files persist between sessions — no need to re-scan',
   'Use specific keywords for better results — Ocular ranks by match count',
-  'Index any folder on your computer using the "Index folder" button',
+  'Index any folder on your computer using the scan panel',
   'Google Docs and Sheets are automatically converted to searchable text',
   'Results are sorted by how many times your keyword appears in the file',
 ]
@@ -203,9 +225,9 @@ function RotatingTips() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.3 }}
-          className="text-white/20 text-xs font-mono absolute inset-x-0"
+          className="text-white/20 text-xs absolute inset-x-0" style={{ fontWeight: 300 }}
         >
-          tip: {TIPS[index]}
+          {TIPS[index]}
         </motion.p>
       </AnimatePresence>
     </div>
@@ -220,18 +242,18 @@ function saveChatHistory(msgs) { localStorage.setItem(CHK, JSON.stringify(msgs.s
 // ── Typing Indicator ──────────────────────────────────────
 function TypingDots() {
   return (
-    <div className="flex items-center gap-1 py-2 px-1">
+    <div className="flex items-center gap-1.5 py-2 px-1">
       {[0, 1, 2].map(i => (
-        <motion.div key={i} className="w-1.5 h-1.5 rounded-full bg-white/40"
-          animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1, 0.8] }}
-          transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }} />
+        <motion.div key={i} className="w-2 h-2 rounded-full bg-white/40"
+          animate={{ y: [0, -6, 0] }}
+          transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }} />
       ))}
     </div>
   )
 }
 
-// ── Chat Drawer ───────────────────────────────────────────
-function ChatDrawer({ open, onClose, indexedCount, onSearchFile }) {
+// ── Chat Panel ────────────────────────────────────────────
+function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
   const [messages, setMessages] = useState(getChatHistory)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -259,7 +281,6 @@ function ChatDrawer({ open, onClose, indexedCount, onSearchFile }) {
     setLoading(true)
 
     try {
-      // Gather relevant documents from client-side IndexedDB
       const searchResults = engine.retrieve(q, 5)
       const sources = searchResults.map(r => {
         const doc = engine.getDocument(r.filepath)
@@ -344,126 +365,114 @@ function ChatDrawer({ open, onClose, indexedCount, onSearchFile }) {
   return (
     <AnimatePresence>
       {open && (
-        <>
-          {/* Backdrop */}
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+        <motion.div
+          initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+          className="fixed bottom-0 left-0 right-0 z-50 flex flex-col"
+          style={{
+            height: '70vh',
+            background: 'linear-gradient(0deg, rgba(0,0,0,0.99), rgba(8,8,8,0.98))',
+            backdropFilter: 'blur(60px)',
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '24px 24px 0 0',
+          }}
+        >
+          {/* Handle */}
+          <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-2" />
 
-          {/* Drawer */}
-          <motion.div
-            initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-md flex flex-col bg-black/80 backdrop-blur-3xl border-l border-white/15 shadow-[-20px_0_60px_rgba(0,0,0,0.5)]"
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.08]">
-              <div className="flex items-center gap-2.5">
-                <Sparkles size={16} className="text-white/60" />
-                <span className="text-white/90 font-medium text-[15px]">Ocular AI</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={newChat}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all">
-                  <Plus size={12} /> New Chat
-                </button>
-                <button onClick={onClose}
-                  className="text-white/30 hover:text-white/60 transition p-1">
-                  <X size={16} />
-                </button>
-              </div>
+          {/* Header */}
+          <div className="flex items-center justify-between px-8 pt-2 pb-4">
+            <span className="font-heading text-xl text-white">Ocular AI</span>
+            <div className="flex items-center gap-2">
+              <button onClick={newChat}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all" style={{ fontWeight: 400 }}>
+                <Plus size={12} /> New
+              </button>
+              <button onClick={onClose} className="text-white/30 hover:text-white/60 transition p-1"><X size={16} /></button>
             </div>
+          </div>
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 scrollbar-thin">
-              {messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-full text-center gap-4">
-                  <div className="relative">
-                    <Sparkles size={28} className="text-white/15" />
-                    <div className="absolute -inset-4 bg-white/5 rounded-full blur-2xl" />
-                  </div>
-                  {indexedCount > 0 ? (
-                    <>
-                      <p className="text-white/30 text-sm">Ask anything about your files</p>
-                      <p className="text-white/15 text-xs">{indexedCount} files indexed and searchable</p>
-                    </>
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto px-8 py-4 space-y-6">
+            {messages.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full text-center gap-4">
+                <Sparkles size={28} className="text-white/15" />
+                {indexedCount > 0 ? (
+                  <>
+                    <p className="text-white/30 text-sm" style={{ fontWeight: 300 }}>Ask anything about your files</p>
+                    <p className="text-white/15 text-xs">{indexedCount} files indexed</p>
+                  </>
+                ) : (
+                  <p className="text-white/30 text-sm" style={{ fontWeight: 300 }}>Index some files first</p>
+                )}
+              </div>
+            )}
+
+            {messages.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] ${msg.role === 'user'
+                  ? 'liquid-glass-strong rounded-2xl rounded-br-sm px-5 py-3'
+                  : 'w-full'}`}>
+                  {msg.role === 'user' ? (
+                    <p className="text-[0.88rem] text-white/80 leading-relaxed" style={{ fontWeight: 300 }}>{msg.text}</p>
                   ) : (
-                    <>
-                      <p className="text-white/30 text-sm">Index some files first</p>
-                      <p className="text-white/15 text-xs">Use "Index folder" to add documents, then ask questions here</p>
-                    </>
+                    <div className="space-y-2">
+                      {msg.sources && msg.sources.length > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {msg.sources.map((src, j) => (
+                            <button key={j} onClick={() => onSearchFile(src.filename)}
+                              className="flex items-center gap-1.5 liquid-glass rounded-full px-3 py-1 text-[0.7rem] text-white/50 hover:text-white/80 transition-all">
+                              <FileText size={10} />
+                              {src.filename}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {msg.isError ? (
+                        <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20">
+                          <AlertCircle size={14} className="text-red-400/70 mt-0.5 shrink-0" />
+                          <p className="text-[0.88rem] text-red-300/70 leading-relaxed">{msg.text}</p>
+                        </div>
+                      ) : msg.text ? (
+                        <div className="text-[0.88rem] text-white/70 leading-relaxed prose prose-invert prose-sm max-w-none
+                          [&_p]:mb-2 [&_p:last-child]:mb-0
+                          [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5
+                          [&_code]:bg-white/[0.08] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[12px]
+                          [&_pre]:bg-white/[0.05] [&_pre]:border [&_pre]:border-white/[0.08] [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto
+                          [&_strong]:text-white/90 [&_h1]:text-white/90 [&_h2]:text-white/90 [&_h3]:text-white/90
+                          [&_a]:text-white/60 [&_a]:underline" style={{ fontWeight: 300 }}>
+                          <ReactMarkdown>{msg.text}</ReactMarkdown>
+                        </div>
+                      ) : loading && i === messages.length - 1 ? (
+                        <TypingDots />
+                      ) : null}
+                    </div>
                   )}
                 </div>
-              )}
-
-              {messages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] ${msg.role === 'user'
-                    ? 'bg-white/[0.1] border border-white/[0.12] rounded-2xl rounded-br-md px-4 py-2.5'
-                    : 'w-full'}`}>
-                    {msg.role === 'user' ? (
-                      <p className="text-[13px] text-white/80 leading-relaxed">{msg.text}</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {/* Source chips — always shown if available */}
-                        {msg.sources && msg.sources.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 pt-1">
-                            {msg.sources.map((src, j) => (
-                              <button key={j} onClick={() => onSearchFile(src.filename)}
-                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] bg-white/[0.05] border border-white/[0.08] text-white/40 hover:text-white/70 hover:bg-white/[0.1] hover:border-white/[0.15] transition-all">
-                                <FileText size={10} />
-                                {src.filename}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-
-                        {msg.isError ? (
-                          <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20">
-                            <AlertCircle size={14} className="text-red-400/70 mt-0.5 shrink-0" />
-                            <p className="text-[13px] text-red-300/70 leading-relaxed">{msg.text}</p>
-                          </div>
-                        ) : msg.text ? (
-                          <div className="text-[13px] text-white/70 leading-relaxed prose prose-invert prose-sm max-w-none
-                            [&_p]:mb-2 [&_p:last-child]:mb-0
-                            [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5
-                            [&_code]:bg-white/[0.08] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[12px]
-                            [&_pre]:bg-white/[0.05] [&_pre]:border [&_pre]:border-white/[0.08] [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto
-                            [&_strong]:text-white/90 [&_h1]:text-white/90 [&_h2]:text-white/90 [&_h3]:text-white/90
-                            [&_a]:text-white/60 [&_a]:underline">
-                            <ReactMarkdown>{msg.text}</ReactMarkdown>
-                          </div>
-                        ) : loading && i === messages.length - 1 ? (
-                          <TypingDots />
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {loading && messages.length > 0 && messages[messages.length - 1]?.text && (
-                <div className="flex justify-start"><TypingDots /></div>
-              )}
-
-              <div ref={endRef} />
-            </div>
-
-            {/* Input */}
-            <div className="px-4 py-3 border-t border-white/[0.08]">
-              <div className="relative flex items-center gap-2">
-                <input ref={inputRef} type="text" value={input}
-                  onChange={(e) => setInput(e.target.value)} onKeyDown={handleKey}
-                  placeholder={indexedCount > 0 ? "Ask about your files..." : "Index files first..."}
-                  disabled={loading || indexedCount === 0}
-                  className="flex-1 bg-white/[0.06] border border-white/[0.1] rounded-xl py-3 px-4 text-[13px] text-white placeholder-white/20 focus:outline-none focus:border-white/[0.2] transition-all disabled:opacity-30" />
-                <button onClick={sendMessage} disabled={!input.trim() || loading || indexedCount === 0}
-                  className="p-3 rounded-xl bg-white/[0.08] border border-white/[0.1] text-white/40 hover:text-white/80 hover:bg-white/[0.14] transition-all disabled:opacity-20 disabled:cursor-not-allowed">
-                  <Send size={16} />
-                </button>
               </div>
+            ))}
+
+            {loading && messages.length > 0 && messages[messages.length - 1]?.text && (
+              <div className="flex justify-start"><TypingDots /></div>
+            )}
+            <div ref={endRef} />
+          </div>
+
+          {/* Input */}
+          <div className="px-8 pb-8 pt-4">
+            <div className="liquid-glass-strong rounded-full flex items-center px-5 h-12">
+              <input ref={inputRef} type="text" value={input}
+                onChange={(e) => setInput(e.target.value)} onKeyDown={handleKey}
+                placeholder={indexedCount > 0 ? "Ask about your documents..." : "Index files first..."}
+                disabled={loading || indexedCount === 0}
+                className="flex-1 bg-transparent border-none outline-none text-white text-[0.88rem] placeholder-white/25 disabled:opacity-30" style={{ fontWeight: 300 }} />
+              <button onClick={sendMessage} disabled={!input.trim() || loading || indexedCount === 0}
+                className="w-8 h-8 rounded-full bg-white flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed transition-opacity">
+                <ArrowUp size={16} className="text-black" />
+              </button>
             </div>
-          </motion.div>
-        </>
+          </div>
+        </motion.div>
       )}
     </AnimatePresence>
   )
@@ -491,12 +500,19 @@ function App() {
   const [showFullDriveSetup, setShowFullDriveSetup] = useState(false)
   const [userClientId, setUserClientId] = useState(() => localStorage.getItem('ocular_user_gdrive_client_id') || '')
   const [chatOpen, setChatOpen] = useState(false)
+  const [scanPanelOpen, setScanPanelOpen] = useState(false)
+  const [snapCount, setSnapCount] = useState(0)
   const inputRef = useRef(null)
   const historyRef = useRef(null)
   const dragCounter = useRef(0)
   const driveMenuRef = useRef(null)
 
   const notify = (msg, type = 'success') => setToast({ message: msg, type })
+
+  // Hero parallax
+  const { scrollY } = useScroll()
+  const heroY = useTransform(scrollY, [0, 600], [0, 45])
+  const heroOpacity = useTransform(scrollY, [0, 400], [1, 0])
 
   // Init engine
   useEffect(() => {
@@ -524,6 +540,7 @@ function App() {
   const runSearch = (sq) => {
     if (!sq.trim()) return; setQuery(sq); setSearching(true); setHasSearched(true); setShowHistory(false)
     addToHistory(sq); setHistory(getHistory())
+    setSnapCount(c => c + 1) // trigger aperture snap
     const r = engine.search(sq)
     setResults(r)
     if (!r.length) notify('No matches found.', 'error')
@@ -535,8 +552,9 @@ function App() {
   const filteredHistory = query.trim()
     ? history.filter(h => h.toLowerCase().includes(query.toLowerCase()) && h.toLowerCase() !== query.toLowerCase()) : history
 
-  // ── Index folder (pick any folder) ───────────────────────
+  // ── Index folder ─────────────────────────────────────────
   const handleScan = async () => {
+    setScanPanelOpen(false)
     if (!supportsFS) return notify('Please use Chrome or Edge to scan folders.', 'error')
     try {
       const dirHandle = await window.showDirectoryPicker({ mode: 'read' })
@@ -610,9 +628,8 @@ function App() {
     notify(msg)
   }
 
-  // ── Quick Scan (Picker) ────────────────────────────────
   const handleQuickScan = async () => {
-    setShowDriveMenu(false)
+    setScanPanelOpen(false)
     if (!GOOGLE_API_KEY) return notify('Picker API key not configured yet.', 'error')
     try {
       const { token, files } = await pickFiles(GOOGLE_CLIENT_ID, GOOGLE_API_KEY)
@@ -622,9 +639,8 @@ function App() {
     }
   }
 
-  // ── Full Drive Scan (user's own Client ID) ─────────────
   const handleFullDriveScan = async () => {
-    setShowDriveMenu(false)
+    setScanPanelOpen(false)
     if (!userClientId.trim()) return setShowFullDriveSetup(true)
     try {
       const token = await authorize(userClientId.trim())
@@ -655,12 +671,8 @@ function App() {
   }
 
   // ── Drag & drop ──────────────────────────────────────────
-  const handleDragEnter = (e) => {
-    e.preventDefault(); dragCounter.current++; setDragging(true)
-  }
-  const handleDragLeave = (e) => {
-    e.preventDefault(); dragCounter.current--; if (dragCounter.current === 0) setDragging(false)
-  }
+  const handleDragEnter = (e) => { e.preventDefault(); dragCounter.current++; setDragging(true) }
+  const handleDragLeave = (e) => { e.preventDefault(); dragCounter.current--; if (dragCounter.current === 0) setDragging(false) }
   const handleDragOver = (e) => { e.preventDefault() }
   const handleDrop = async (e) => {
     e.preventDefault(); dragCounter.current = 0; setDragging(false)
@@ -678,256 +690,368 @@ function App() {
 
   if (!ready) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+      <div className="min-h-screen bg-black flex items-center justify-center">
         <Loader2 className="text-white/30 animate-spin" size={24} />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-white/20 relative overflow-x-hidden"
+    <div className="min-h-screen bg-black text-white selection:bg-white/20 relative"
+      style={{ fontFamily: "'Barlow', sans-serif" }}
       onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
 
-      {/* Drop overlay */}
+      {/* Grain overlay */}
+      <div className="grain-overlay" />
+
+      {/* ── NAVBAR ────────────────────────────────────────── */}
+      <div style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 2rem)', maxWidth: '56rem', zIndex: 50 }}>
+        <motion.nav
+          initial={{ y: -18, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 1.1 }}
+          className="liquid-glass rounded-full px-5 h-14 flex items-center"
+        >
+          <div className="flex-1">
+            <span className="font-heading text-xl text-white tracking-tight">Ocular</span>
+          </div>
+          <div className="flex items-center gap-6">
+            {['Search', 'Scan', 'Chat'].map(label => (
+              <button key={label}
+                onClick={() => {
+                  if (label === 'Search') inputRef.current?.focus()
+                  if (label === 'Scan') setScanPanelOpen(true)
+                  if (label === 'Chat') setChatOpen(true)
+                }}
+                className="text-sm text-white/50 hover:text-white transition-colors" style={{ fontWeight: 400 }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex-1 flex justify-end">
+            <button onClick={() => inputRef.current?.focus()}
+              className="bg-white text-black rounded-full px-5 py-1.5 text-sm flex items-center gap-1.5" style={{ fontWeight: 500 }}>
+              Get Started <ArrowUpRight size={14} />
+            </button>
+          </div>
+        </motion.nav>
+      </div>
+
+      {/* ── HERO ──────────────────────────────────────────── */}
+      <section className="relative h-screen min-h-[600px] overflow-hidden">
+        <ApertureCanvas triggerSnap={snapCount} />
+        <ParticleCanvas />
+
+        <motion.div
+          style={{ y: heroY, opacity: heroOpacity }}
+          className="relative z-10 flex flex-col items-center justify-center h-full px-6 pt-20"
+        >
+          {/* Badge */}
+          <motion.div
+            initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.1, duration: 0.8 }}
+            className="liquid-glass inline-flex items-center gap-2 rounded-full px-4 py-2 mb-8"
+          >
+            <span className="bg-white text-black text-xs rounded-full px-2 py-0.5" style={{ fontWeight: 600 }}>New</span>
+            <span className="text-white/75 text-[0.82rem]" style={{ fontWeight: 300 }}>Your computer has eyes now.</span>
+          </motion.div>
+
+          {/* Particle Title */}
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            transition={{ delay: 0.3, duration: 1 }}
+            className="w-full max-w-[960px] mb-6"
+          >
+            <ParticleTitle text="OCULAR" />
+          </motion.div>
+
+          {/* Subtext */}
+          <motion.p
+            initial={{ opacity: 0, filter: 'blur(8px)' }}
+            animate={{ opacity: 1, filter: 'blur(0px)' }}
+            transition={{ delay: 0.8, duration: 0.8 }}
+            className="text-white/50 text-[1rem] text-center max-w-lg mb-6"
+            style={{ fontWeight: 300 }}
+          >
+            Search inside your screenshots, documents, and images. Powered by computer vision and OCR — your files are no longer invisible.
+          </motion.p>
+
+          {/* Stats */}
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            transition={{ delay: 1.0, duration: 0.6 }}
+            className="flex items-center gap-3 mb-8"
+          >
+            {indexedCount > 0 && (
+              <span className="liquid-glass rounded-full px-4 py-1.5 text-white/50 text-xs" style={{ fontWeight: 400 }}>
+                {indexedCount} documents indexed
+              </span>
+            )}
+          </motion.div>
+
+          {/* Search Bar */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.1, duration: 0.6 }}
+            className="w-full max-w-2xl relative" ref={historyRef}
+          >
+            <form onSubmit={handleSearch}>
+              <div className="liquid-glass-strong rounded-full flex items-center px-6 h-14">
+                {searching
+                  ? <Loader2 className="text-white/40 animate-spin shrink-0" size={20} />
+                  : <Search className="text-white/30 shrink-0" size={20} />}
+                <input ref={inputRef} type="text" value={query}
+                  onChange={(e) => setQuery(e.target.value)} onClick={() => setShowHistory(true)}
+                  placeholder="Search your knowledge base..."
+                  className="flex-1 bg-transparent border-none outline-none text-white text-[0.95rem] placeholder-white/25 ml-3"
+                  style={{ fontWeight: 300 }} />
+                {query && (
+                  <button type="button"
+                    onClick={() => { setQuery(''); setResults([]); setHasSearched(false); inputRef.current?.focus() }}
+                    className="text-white/25 hover:text-white/60 transition shrink-0">
+                    <X size={18} />
+                  </button>
+                )}
+              </div>
+            </form>
+
+            {/* History dropdown */}
+            <AnimatePresence>
+              {showHistory && filteredHistory.length > 0 && (
+                <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }}
+                  className="absolute top-full left-0 right-0 mt-2 liquid-glass rounded-2xl overflow-hidden shadow-[0_16px_60px_rgba(0,0,0,0.4)] z-20">
+                  <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.06]">
+                    <span className="text-[10px] text-white/25 tracking-[0.15em] flex items-center gap-2" style={{ fontWeight: 500 }}>
+                      <Clock size={10} /> RECENT
+                    </span>
+                    <button onClick={handleClearHistory}
+                      className="text-[10px] text-white/20 hover:text-white/50 transition flex items-center gap-1">
+                      <Trash2 size={10} /> Clear
+                    </button>
+                  </div>
+                  {filteredHistory.map((h) => (
+                    <div key={h} onClick={() => runSearch(h)}
+                      className="flex items-center justify-between px-5 py-3 hover:bg-white/[0.05] cursor-pointer transition group/item">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Search size={12} className="text-white/15 shrink-0" />
+                        <span className="text-sm text-white/40 truncate group-hover/item:text-white/70 transition" style={{ fontWeight: 300 }}>{h}</span>
+                      </div>
+                      <button onClick={(e) => handleRemoveHistory(e, h)}
+                        className="text-white/15 hover:text-white/50 transition opacity-0 group-hover/item:opacity-100 shrink-0 ml-2">
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        </motion.div>
+
+        {/* Bottom fade */}
+        <div className="absolute bottom-0 left-0 right-0 z-5 h-[200px]"
+          style={{ background: 'linear-gradient(to bottom, transparent 0%, black 100%)' }} />
+      </section>
+
+      {/* ── RESULTS SECTION ───────────────────────────────── */}
+      {(hasSearched || results.length > 0) && (
+        <section className="bg-black px-6 py-16 min-h-[40vh]">
+          <div className="max-w-5xl mx-auto">
+            <AnimatePresence mode="wait">
+              {results.length > 0 && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-between mb-8">
+                  <p className="text-white/50 text-sm" style={{ fontWeight: 300 }}>
+                    Results for &lsquo;<span className="text-white/70">{query}</span>&rsquo;
+                  </p>
+                  <span className="text-white/30 text-xs">{results.length} matches</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <AnimatePresence>
+                {results.map((item, i) => (
+                  <ResultCard key={`${item.filepath}-${i}`} item={item} index={i} searchQuery={query} />
+                ))}
+              </AnimatePresence>
+            </div>
+
+            {hasSearched && !results.length && !searching && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20">
+                <Search size={28} className="text-white/15 mx-auto mb-4" strokeWidth={1.5} />
+                <p className="text-white/25 text-sm" style={{ fontWeight: 300 }}>No results found</p>
+                <p className="text-white/15 text-xs mt-1.5">Try different keywords or index some folders first</p>
+              </motion.div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Empty state */}
+      {!hasSearched && !results.length && (
+        <section className="bg-black px-6 py-20">
+          <div className="max-w-lg mx-auto text-center">
+            <p className="text-white/25 text-sm mb-6" style={{ fontWeight: 300 }}>
+              {indexedCount > 0
+                ? `${indexedCount} files ready — start searching`
+                : 'Index a folder or connect Google Drive to get started'}
+            </p>
+            <RotatingTips />
+          </div>
+        </section>
+      )}
+
+      {/* ── FOOTER ────────────────────────────────────────── */}
+      <footer className="bg-black px-6 pb-10 pt-20">
+        <div className="max-w-5xl mx-auto">
+          <div className="h-px w-full mb-8" style={{ background: 'rgba(255,255,255,0.12)' }} />
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <p className="text-white/[0.38] text-xs" style={{ fontWeight: 300 }}>
+              &copy; 2026 Ocular. All rights reserved.
+            </p>
+            <div className="flex items-center gap-6">
+              {[
+                { label: 'Privacy', href: 'https://maryammeda.github.io/Ocular/privacy.html' },
+                { label: 'Terms', href: 'https://maryammeda.github.io/Ocular/terms.html' },
+                { label: 'GitHub', href: 'https://github.com/maryammeda/Ocular' },
+              ].map(link => (
+                <a key={link.label} href={link.href} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-white/[0.38] hover:text-white/70 transition-colors" style={{ fontWeight: 300 }}>
+                  {link.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      </footer>
+
+      {/* ── SCAN PANEL (slide from right) ─────────────────── */}
+      <AnimatePresence>
+        {scanPanelOpen && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={() => setScanPanelOpen(false)} />
+            <motion.div
+              initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="fixed top-0 right-0 bottom-0 z-50 w-96 flex flex-col"
+              style={{
+                background: 'linear-gradient(180deg, rgba(8,8,8,0.98), rgba(0,0,0,0.99))',
+                backdropFilter: 'blur(60px)',
+                borderLeft: '1px solid rgba(255,255,255,0.08)',
+              }}
+            >
+              <div className="flex items-center justify-between p-8 pb-4">
+                <span className="font-heading text-2xl text-white">Index Files</span>
+                <button onClick={() => setScanPanelOpen(false)} className="text-white/40 hover:text-white transition"><X size={18} /></button>
+              </div>
+
+              <div className="flex-1 p-8 pt-4 space-y-3">
+                {[
+                  { icon: FolderOpen, title: 'Quick Scan', desc: 'Scan Desktop, Downloads & Documents', action: handleScan },
+                  { icon: HardDrive, title: 'Custom Folder', desc: 'Choose a specific folder to index', action: handleScan },
+                  { icon: Cloud, title: 'Google Drive', desc: 'Import files from Google Drive', action: handleQuickScan },
+                  { icon: Upload, title: 'Full Drive Scan', desc: 'Index everything — requires setup', action: handleFullDriveScan },
+                ].map(({ icon: Icon, title, desc, action }) => (
+                  <motion.button key={title}
+                    whileHover={{ scale: 1.02 }}
+                    onClick={action}
+                    disabled={scanning}
+                    className="w-full liquid-glass rounded-2xl p-5 text-left group transition-all disabled:opacity-30"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-11 h-11 rounded-2xl flex items-center justify-center"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03))',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                        }}>
+                        <Icon size={18} className="text-white/75" />
+                      </div>
+                      <div>
+                        <p className="text-[0.95rem] text-white mb-0.5" style={{ fontWeight: 500 }}>{title}</p>
+                        <p className="text-[0.82rem] text-white/40" style={{ fontWeight: 300 }}>{desc}</p>
+                      </div>
+                    </div>
+                  </motion.button>
+                ))}
+
+                {/* OCR Toggle */}
+                <div className="flex items-center justify-between px-2 pt-4">
+                  <span className="text-sm text-white/50" style={{ fontWeight: 300 }}>OCR (Image Scanning)</span>
+                  <button
+                    onClick={() => { const v = !ocrEnabled; setOcrEnabled(v); localStorage.setItem('ocular_ocr_enabled', v) }}
+                    className="relative w-11 h-6 rounded-full transition-colors duration-200"
+                    style={{ background: ocrEnabled ? 'white' : 'rgba(255,255,255,0.1)' }}
+                  >
+                    <div className="absolute top-1 w-4 h-4 rounded-full transition-all duration-200"
+                      style={{
+                        left: ocrEnabled ? '24px' : '4px',
+                        background: ocrEnabled ? 'black' : 'rgba(255,255,255,0.4)',
+                      }} />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ── FLOATING ACTION BUTTONS ───────────────────────── */}
+      {/* Scan FAB */}
+      <motion.button
+        onClick={() => setScanPanelOpen(true)}
+        initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.5, type: 'spring' }}
+        whileHover={{ scale: 1.08 }}
+        className="fixed bottom-8 right-8 z-30 w-14 h-14 rounded-full liquid-glass-strong flex items-center justify-center text-white/60 hover:text-white transition-all"
+        style={{ boxShadow: '0 0 0 0 rgba(255,255,255,0), 0 4px 20px rgba(0,0,0,0.3)' }}
+      >
+        <ScanLine size={20} />
+      </motion.button>
+
+      {/* Chat FAB */}
+      <motion.button
+        onClick={() => setChatOpen(true)}
+        initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.6, type: 'spring' }}
+        whileHover={{ scale: 1.08 }}
+        className="fixed bottom-8 left-8 z-30 w-14 h-14 rounded-full liquid-glass-strong flex items-center justify-center text-white/60 hover:text-white transition-all"
+        style={{ boxShadow: '0 0 0 0 rgba(255,255,255,0), 0 4px 20px rgba(0,0,0,0.3)' }}
+      >
+        <MessageCircle size={20} />
+      </motion.button>
+
+      {/* ── OVERLAYS ──────────────────────────────────────── */}
+      <AnimatePresence>{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}</AnimatePresence>
+      <AnimatePresence>{scanning && <ScanOverlay label={scanLabel} fileCount={scanCount} currentFile={scanFile} isOcr={isOcr} />}</AnimatePresence>
+
+      {/* Drag & drop overlay */}
       <AnimatePresence>
         {dragging && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-2xl flex items-center justify-center pointer-events-none">
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
-              className="flex flex-col items-center gap-5">
-              <div className="relative">
-                <motion.div className="w-32 h-32 rounded-3xl border-2 border-dashed border-white/30 flex items-center justify-center"
-                  animate={{ borderColor: ['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.5)', 'rgba(255,255,255,0.2)'] }}
-                  transition={{ duration: 2, repeat: Infinity }}>
-                  <Upload className="text-white/60" size={36} />
-                </motion.div>
-                <div className="absolute -inset-8 bg-white/5 rounded-full blur-3xl" />
-              </div>
-              <div className="text-center">
-                <p className="text-white/80 text-lg font-medium">Drop to scan</p>
-                <p className="text-white/30 text-sm mt-1">Files and folders will be indexed</p>
-              </div>
+            className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none"
+            style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(20px)' }}>
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }}
+              className="flex flex-col items-center justify-center gap-4 w-80 h-64 rounded-3xl"
+              style={{ border: '2px dashed rgba(255,255,255,0.2)' }}>
+              <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}>
+                <Upload size={48} className="text-white/30" />
+              </motion.div>
+              <p className="text-white/50 text-sm" style={{ fontWeight: 300 }}>Drop files or folders to index</p>
+              <p className="text-white/25 text-xs">Supports PDF, DOCX, TXT, PNG, JPG</p>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Top edge glow */}
-      <div className="fixed top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent z-30" />
-
-      <AnimatePresence>{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}</AnimatePresence>
-      <AnimatePresence>{scanning && <ScanOverlay label={scanLabel} fileCount={scanCount} currentFile={scanFile} isOcr={isOcr} />}</AnimatePresence>
-
-      <div className="relative z-10 max-w-2xl mx-auto px-6 pt-16 pb-16">
-
-        {/* Header */}
-        <motion.header initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }} className="text-center mb-8">
-          <div className="inline-flex items-center gap-3.5 mb-4">
-            <div className="relative">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}>
-                <Orbit className="text-white" size={30} strokeWidth={1.5} />
-              </motion.div>
-              <div className="absolute -inset-4 bg-white/15 rounded-full blur-2xl" />
-              <div className="absolute -inset-8 bg-white/5 rounded-full blur-3xl" />
-            </div>
-            <h1 className="text-4xl font-semibold tracking-tight">
-              <span className="drop-shadow-[0_0_20px_rgba(255,255,255,0.5)] drop-shadow-[0_0_60px_rgba(255,255,255,0.25)]">Ocular</span>
-            </h1>
-          </div>
-          <p className="text-white/30 text-[13px] tracking-[0.2em] uppercase font-light">
-            Search your files instantly
+      {/* Browser support warning */}
+      {!supportsFS && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-20 liquid-glass rounded-2xl px-5 py-3 text-center">
+          <p className="text-white/40 text-sm" style={{ fontWeight: 300 }}>
+            Use <span className="text-white/70">Chrome</span> or <span className="text-white/70">Edge</span> for folder scanning.
           </p>
-          {indexedCount > 0 && (
-            <p className="text-white/15 text-[11px] mt-2 font-mono">{indexedCount} files in index</p>
-          )}
-        </motion.header>
-
-        {/* Search */}
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }} className="relative mb-6" ref={historyRef}>
-          <form onSubmit={handleSearch} className="relative group/s">
-            {/* Focus glow */}
-            <div className="absolute -inset-3 rounded-3xl bg-white/[0.06] opacity-0 group-focus-within/s:opacity-100 blur-2xl transition-opacity duration-700 pointer-events-none" />
-            <div className="absolute -inset-6 rounded-[2rem] bg-white/[0.03] opacity-0 group-focus-within/s:opacity-100 blur-3xl transition-opacity duration-700 pointer-events-none" />
-            <div className="relative">
-              <input ref={inputRef} type="text" value={query}
-                onChange={(e) => setQuery(e.target.value)} onClick={() => setShowHistory(true)}
-                placeholder="Search files, content, anything..."
-                className="w-full bg-white/[0.06] backdrop-blur-xl border border-white/[0.1] rounded-2xl py-4 px-6 pl-[3.25rem] pr-12 text-[15px] text-white placeholder-white/25 focus:outline-none focus:border-white/[0.25] focus:bg-white/[0.08] transition-all duration-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_15px_rgba(255,255,255,0.03)] focus:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_30px_rgba(255,255,255,0.07),0_0_60px_rgba(255,255,255,0.03)]" />
-              {searching
-                ? <Loader2 className="absolute left-[1.1rem] top-[1.05rem] text-white animate-spin" size={20} />
-                : <Search className="absolute left-[1.1rem] top-[1.05rem] text-white/30" size={20} />}
-              {query ? (
-                <button type="button"
-                  onClick={() => { setQuery(''); setResults([]); setHasSearched(false); inputRef.current?.focus() }}
-                  className="absolute right-4 top-[1.05rem] text-white/25 hover:text-white/70 transition">
-                  <X size={18} />
-                </button>
-              ) : (
-                <div className="absolute right-5 top-[1.15rem] text-[10px] text-white/15 font-mono tracking-[0.15em] hidden sm:block">ENTER</div>
-              )}
-              {/* Top shine on search bar */}
-              <div className="absolute top-0 left-[10%] right-[10%] h-[1px] bg-gradient-to-r from-transparent via-white/[0.15] to-transparent rounded-full" />
-              {/* Bottom shine on focus */}
-              <div className="absolute bottom-0 left-[20%] right-[20%] h-[1px] bg-gradient-to-r from-transparent via-white/[0.06] to-transparent rounded-full opacity-0 group-focus-within/s:opacity-100 transition-opacity duration-500" />
-            </div>
-          </form>
-
-          {/* History */}
-          <AnimatePresence>
-            {showHistory && filteredHistory.length > 0 && (
-              <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }}
-                className="absolute top-full left-0 right-0 mt-2 bg-white/[0.07] backdrop-blur-2xl border border-white/[0.1] rounded-2xl overflow-hidden shadow-[0_16px_60px_rgba(0,0,0,0.4)] z-20">
-                <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.06]">
-                  <span className="text-[10px] text-white/25 font-mono tracking-[0.15em] flex items-center gap-2">
-                    <Clock size={10} /> RECENT
-                  </span>
-                  <button onClick={handleClearHistory}
-                    className="text-[10px] text-white/20 hover:text-white/50 transition flex items-center gap-1">
-                    <Trash2 size={10} /> Clear
-                  </button>
-                </div>
-                {filteredHistory.map((h) => (
-                  <div key={h} onClick={() => runSearch(h)}
-                    className="flex items-center justify-between px-5 py-3 hover:bg-white/[0.05] cursor-pointer transition group/item">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Search size={12} className="text-white/15 shrink-0" />
-                      <span className="text-sm text-white/40 truncate group-hover/item:text-white/70 transition">{h}</span>
-                    </div>
-                    <button onClick={(e) => handleRemoveHistory(e, h)}
-                      className="text-white/15 hover:text-white/50 transition opacity-0 group-hover/item:opacity-100 shrink-0 ml-2">
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-
-        {/* Buttons */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="flex flex-col items-center gap-3 mb-8">
-          <div className="flex gap-3">
-            <button onClick={handleScan} disabled={scanning}
-              className="group/btn relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/80 hover:bg-white/[0.1] hover:border-white/[0.18] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_20px_rgba(255,255,255,0.06),0_0_40px_rgba(255,255,255,0.02)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-              <FolderSearch size={14} /> Index folder
-              <div className="absolute inset-0 rounded-xl bg-white/[0.05] opacity-0 group-hover/btn:opacity-100 blur-xl transition-opacity duration-300 pointer-events-none" />
-            </button>
-            <div className="relative" ref={driveMenuRef}>
-              <button onClick={() => setShowDriveMenu(!showDriveMenu)} disabled={scanning}
-                className="group/btn relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.06] border border-white/[0.08] text-white/40 hover:text-white/80 hover:bg-white/[0.1] hover:border-white/[0.18] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_20px_rgba(255,255,255,0.06),0_0_40px_rgba(255,255,255,0.02)] backdrop-blur-xl transition-all duration-300 disabled:opacity-25 disabled:cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 19.5h20L12 2z"/><path d="M2 19.5l5-8.5"/><path d="M22 19.5l-5-8.5"/><path d="M7 11h10"/></svg>
-                Google Drive
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-                <div className="absolute inset-0 rounded-xl bg-white/[0.05] opacity-0 group-hover/btn:opacity-100 blur-xl transition-opacity duration-300 pointer-events-none" />
-              </button>
-              <AnimatePresence>
-                {showDriveMenu && (
-                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-                    className="absolute top-full mt-2 left-0 w-64 bg-white/10 backdrop-blur-2xl border border-white/15 rounded-xl overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,0.4)] z-30">
-                    <button onClick={handleQuickScan}
-                      className="w-full text-left px-4 py-3 hover:bg-white/[0.08] transition-colors border-b border-white/[0.06]">
-                      <p className="text-[13px] text-white/70">Select Files</p>
-                      <p className="text-[10px] text-white/25 mt-0.5">Pick specific files from Google Drive</p>
-                    </button>
-                    <button onClick={handleFullDriveScan}
-                      className="w-full text-left px-4 py-3 hover:bg-white/[0.08] transition-colors">
-                      <p className="text-[13px] text-white/70">Full Drive Scan</p>
-                      <p className="text-[10px] text-white/25 mt-0.5">Index everything — requires one-time setup</p>
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer select-none group">
-            <div className="relative w-3.5 h-3.5">
-              <input type="checkbox" checked={!ocrEnabled}
-                onChange={(e) => { const v = !e.target.checked; setOcrEnabled(v); localStorage.setItem('ocular_ocr_enabled', v) }}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-              <div className={`w-3.5 h-3.5 rounded border transition-all duration-200 flex items-center justify-center ${!ocrEnabled ? 'bg-white/80 border-white/80' : 'border-white/20'}`}>
-                {!ocrEnabled && <svg className="w-2.5 h-2.5 text-black" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 6l3 3 5-5"/></svg>}
-              </div>
-            </div>
-            <span className="text-[11px] text-white/25 group-hover:text-white/40 transition-colors">Exclude images for faster indexing</span>
-          </label>
-        </motion.div>
-
-        {/* Browser support warning */}
-        {!supportsFS && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            className="mb-8 p-4 rounded-2xl bg-white/[0.04] border border-white/[0.08] text-center">
-            <p className="text-white/40 text-sm">
-              Your browser doesn't support folder scanning. Please use <span className="text-white/70">Chrome</span> or <span className="text-white/70">Edge</span>.
-            </p>
-          </motion.div>
-        )}
-
-        {/* Results */}
-        <div className="space-y-3">
-          <AnimatePresence mode="wait">
-            {results.length > 0 && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-4 mb-5">
-                <p className="text-white/20 text-[11px] font-mono tracking-[0.15em]">
-                  {results.length} RESULT{results.length !== 1 ? 'S' : ''}
-                </p>
-                <div className="h-[1px] flex-1 bg-gradient-to-r from-white/[0.12] to-transparent shadow-[0_0_8px_rgba(255,255,255,0.06)]" />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <AnimatePresence>
-            {results.map((item, i) => (
-              <ResultCard key={`${item.filepath}-${i}`} item={item} index={i} searchQuery={query} />
-            ))}
-          </AnimatePresence>
-
-          {hasSearched && !results.length && !searching && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-14">
-              <div className="relative inline-block mb-4">
-                <Search size={28} className="text-white/15" strokeWidth={1.5} />
-                <div className="absolute -inset-4 bg-white/5 rounded-full blur-2xl" />
-              </div>
-              <p className="text-white/25 text-sm">No results found</p>
-              <p className="text-white/15 text-xs mt-1.5">Try different keywords or index some folders first</p>
-            </motion.div>
-          )}
-
-          {!hasSearched && !results.length && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} className="text-center py-14">
-              <div className="relative inline-block mb-5">
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}>
-                  <Orbit size={36} className="text-white/20" strokeWidth={1} />
-                </motion.div>
-                <motion.div
-                  className="absolute -inset-6 bg-white/8 rounded-full blur-3xl"
-                  animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.1, 1] }}
-                  transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }} />
-                <div className="absolute -inset-10 bg-white/3 rounded-full blur-[40px]" />
-              </div>
-              <p className="text-white/25 text-sm mb-6">
-                {indexedCount > 0
-                  ? `${indexedCount} files ready — start searching`
-                  : 'Index a folder or connect Google Drive to get started'}
-              </p>
-              <RotatingTips />
-            </motion.div>
-          )}
         </div>
-        <footer className="text-center py-4 text-white/20 text-xs">
-          <a href="https://maryammeda.github.io/Ocular/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-white/40 transition-colors">Privacy Policy</a>
-          <span className="mx-2">·</span>
-          <a href="https://maryammeda.github.io/Ocular/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-white/40 transition-colors">Terms of Service</a>
-        </footer>
-      </div>
+      )}
 
-      {/* Full Drive Scan setup modal */}
+      {/* Full Drive Setup modal */}
       <AnimatePresence>
         {showFullDriveSetup && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -935,32 +1059,30 @@ function App() {
             onClick={() => setShowFullDriveSetup(false)}>
             <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white/10 backdrop-blur-2xl border border-white/15 rounded-2xl p-8 max-w-lg w-full shadow-[0_20px_80px_rgba(0,0,0,0.4)]">
+              className="liquid-glass-strong rounded-2xl p-8 max-w-lg w-full">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-white font-medium text-lg">Full Drive Scan Setup</h2>
+                <h2 className="font-heading text-xl text-white">Full Drive Scan Setup</h2>
                 <button onClick={() => setShowFullDriveSetup(false)} className="text-white/30 hover:text-white/60 transition"><X size={18} /></button>
               </div>
-              <div className="text-white/40 text-[13px] space-y-3 mb-6 leading-relaxed">
-                <p className="text-white/60">To scan your entire Google Drive, you need your own Google Cloud credentials. This is a one-time setup:</p>
+              <div className="text-white/40 text-[13px] space-y-3 mb-6 leading-relaxed" style={{ fontWeight: 300 }}>
+                <p className="text-white/60">To scan your entire Google Drive, you need your own Google Cloud credentials:</p>
                 <ol className="list-decimal list-inside space-y-2 text-white/40">
                   <li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-white/60 underline underline-offset-2">Google Cloud Console</a></li>
                   <li>Create a new project</li>
-                  <li>Go to <span className="text-white/60">APIs &amp; Services &gt; Library</span> and enable <span className="text-white/60">Google Drive API</span></li>
-                  <li>Go to <span className="text-white/60">APIs &amp; Services &gt; Credentials</span></li>
-                  <li>Click <span className="text-white/60">Create Credentials &gt; OAuth Client ID</span></li>
-                  <li>Set type to <span className="text-white/60">Web application</span></li>
+                  <li>Enable <span className="text-white/60">Google Drive API</span></li>
+                  <li>Create <span className="text-white/60">OAuth Client ID</span> (Web application)</li>
                   <li>Add your current URL to <span className="text-white/60">Authorized JavaScript Origins</span></li>
-                  <li>Copy the <span className="text-white/60">Client ID</span> and paste it below</li>
+                  <li>Paste the Client ID below</li>
                 </ol>
-                <p className="text-white/25 text-[11px]">Your Client ID stays in your browser. Ocular never sends it to any server.</p>
+                <p className="text-white/25 text-[11px]">Your Client ID stays in your browser only.</p>
               </div>
               <div className="flex gap-3">
                 <input type="text" value={userClientId} onChange={(e) => setUserClientId(e.target.value)}
                   placeholder="Paste your Client ID here"
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/[0.1] text-white/80 text-[13px] placeholder-white/20 outline-none focus:border-white/25 transition" />
+                  className="flex-1 px-4 py-2.5 rounded-full bg-white/[0.06] border border-white/[0.1] text-white/80 text-[13px] placeholder-white/20 outline-none focus:border-white/25 transition" style={{ fontWeight: 300 }} />
                 <button onClick={startFullDriveScan}
-                  className="px-5 py-2.5 rounded-xl text-[13px] bg-white/[0.1] border border-white/[0.15] text-white/70 hover:text-white hover:bg-white/[0.15] transition-all">
-                  Start Scan
+                  className="px-6 py-2.5 rounded-full text-[13px] bg-white text-black hover:bg-white/90 transition-all" style={{ fontWeight: 500 }}>
+                  Start
                 </button>
               </div>
             </motion.div>
@@ -968,18 +1090,8 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Chat FAB */}
-      <motion.button
-        onClick={() => setChatOpen(true)}
-        initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.5, type: 'spring' }}
-        whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
-        className="fixed bottom-6 right-6 z-30 w-14 h-14 rounded-full bg-white/[0.1] backdrop-blur-2xl border border-white/[0.15] flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.18] hover:border-white/[0.3] hover:shadow-[0_0_30px_rgba(255,255,255,0.15),0_0_60px_rgba(255,255,255,0.05)] transition-all duration-300 shadow-[0_4px_20px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.08)]"
-      >
-        <Sparkles size={20} />
-      </motion.button>
-
-      {/* Chat Drawer */}
-      <ChatDrawer
+      {/* Chat Panel */}
+      <ChatPanel
         open={chatOpen}
         onClose={() => setChatOpen(false)}
         indexedCount={indexedCount}
