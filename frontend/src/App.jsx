@@ -503,7 +503,7 @@ function App() {
   const [chatOpen, setChatOpen] = useState(false)
   const [scanPanelOpen, setScanPanelOpen] = useState(false)
   const [snapCount, setSnapCount] = useState(0)
-  const [revealed, setRevealed] = useState(() => sessionStorage.getItem('ocular_revealed') === '1')
+  const [revealed, setRevealed] = useState(false)
   const inputRef = useRef(null)
   const historyRef = useRef(null)
   const dragCounter = useRef(0)

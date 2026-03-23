@@ -9,12 +9,7 @@ export default function ScanReveal({ onComplete }) {
   const startYRef = useRef(0)
   const progressRef = useRef(0)
 
-  useEffect(() => {
-    if (sessionStorage.getItem('ocular_revealed')) {
-      setDone(true)
-      onComplete?.()
-    }
-  }, [onComplete])
+  // Always show zipper on page load — no session skip
 
   const getProgress = useCallback((clientY) => {
     const container = containerRef.current
@@ -56,7 +51,6 @@ export default function ScanReveal({ onComplete }) {
         setDissolving(true)
         setTimeout(() => {
           setDone(true)
-          sessionStorage.setItem('ocular_revealed', '1')
           onComplete?.()
         }, 700)
       }, 300)
