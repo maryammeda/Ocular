@@ -7,6 +7,7 @@ import { authorize, listFiles, downloadFile, pickFiles } from './gdrive'
 import ApertureCanvas from './ApertureCanvas'
 import ParticleCanvas from './ParticleCanvas'
 import ParticleTitle from './ParticleTitle'
+import ScanReveal from './ScanReveal'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || ''
@@ -502,6 +503,7 @@ function App() {
   const [chatOpen, setChatOpen] = useState(false)
   const [scanPanelOpen, setScanPanelOpen] = useState(false)
   const [snapCount, setSnapCount] = useState(0)
+  const [revealed, setRevealed] = useState(() => sessionStorage.getItem('ocular_revealed') === '1')
   const inputRef = useRef(null)
   const historyRef = useRef(null)
   const dragCounter = useRef(0)
@@ -700,6 +702,9 @@ function App() {
     <div className="min-h-screen bg-black text-white selection:bg-white/20 relative"
       style={{ fontFamily: "'Barlow', sans-serif" }}
       onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
+
+      {/* Scan reveal entrance */}
+      {!revealed && <ScanReveal onComplete={() => setRevealed(true)} />}
 
       {/* Grain overlay */}
       <div className="grain-overlay" />
