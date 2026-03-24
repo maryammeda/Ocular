@@ -638,20 +638,10 @@ function App() {
 
   const handleFullDriveScan = async () => {
     setScanPanelOpen(false)
-    if (!userClientId.trim()) return setShowFullDriveSetup(true)
-    try {
-      const token = await authorize(userClientId.trim())
-      setScanLabel('Fetching files from Google Drive')
-      setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false)
-      const files = await listFiles(token)
-      await processDriveFiles(token, files, `Indexing ${files.length} files from Google Drive`)
-    } catch (e) {
-      if (!e.message?.includes('popup_closed')) notify(e.message, 'error')
-      setScanning(false)
-    }
+    setShowFullDriveSetup(true)
   }
 
-  const startFullDriveScan = async () => {
+  const startFullDriveScanFromSetup = async () => {
     if (!userClientId.trim()) return notify('Please enter a Client ID.', 'error')
     localStorage.setItem('ocular_user_gdrive_client_id', userClientId.trim())
     setShowFullDriveSetup(false)
@@ -666,6 +656,7 @@ function App() {
       setScanning(false)
     }
   }
+
 
   // ── Drag & drop ──────────────────────────────────────────
   const handleDragEnter = (e) => { e.preventDefault(); dragCounter.current++; setDragging(true) }
@@ -1061,7 +1052,7 @@ function App() {
                 <input type="text" value={userClientId} onChange={(e) => setUserClientId(e.target.value)}
                   placeholder="Paste your Client ID here"
                   className="flex-1 px-4 py-2.5 rounded-full bg-white/[0.06] border border-white/[0.1] text-white/80 text-[13px] placeholder-white/20 outline-none focus:border-white/25 transition" style={{ fontWeight: 300 }} />
-                <button onClick={startFullDriveScan}
+                <button onClick={startFullDriveScanFromSetup}
                   className="px-6 py-2.5 rounded-full text-[13px] bg-white text-black hover:bg-white/90 transition-all" style={{ fontWeight: 500 }}>
                   Start
                 </button>
