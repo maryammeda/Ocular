@@ -40,65 +40,17 @@ export async function authorize(clientId, scope = 'https://www.googleapis.com/au
   })
 }
 
-const SUPPORTED_MIME = [
-  'application/pdf',
-  'application/vnd.google-apps.document',
-  'application/vnd.google-apps.spreadsheet',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'text/plain', 'text/csv', 'text/markdown',
-  'image/png', 'image/jpeg',
-]
-
-// ── List files inside a picked folder (recursive) ────────
-async function listFolderFiles(token, folderId) {
-  let allFiles = []
-  let pageToken = null
-
-  do {
-    const params = new URLSearchParams({
-      q: `'${folderId}' in parents and trashed=false`,
-      fields: 'nextPageToken,files(id,name,mimeType,size)',
-      pageSize: '1000',
-    })
-    if (pageToken) params.set('pageToken', pageToken)
-
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!res.ok) throw new Error(`Drive API error: ${res.status}`)
-    const data = await res.json()
-
-    for (const file of data.files || []) {
-      if (file.mimeType === 'application/vnd.google-apps.folder') {
-        const nested = await listFolderFiles(token, file.id)
-        allFiles = allFiles.concat(nested)
-      } else if (SUPPORTED_MIME.includes(file.mimeType)) {
-        allFiles.push(file)
-      }
-    }
-    pageToken = data.nextPageToken
-  } while (pageToken)
-
-  return allFiles
-}
-
-// ── Picker-based file/folder selection (drive.file scope) ──
+// ── Picker-based file selection (drive.file scope) ────────
 export async function pickFiles(clientId, apiKey) {
   const token = await authorize(clientId, 'https://www.googleapis.com/auth/drive.file')
   await loadPicker()
 
   return new Promise((resolve, reject) => {
     /* global google */
-    // Folder picker view — lets user select a whole folder
-    const folderView = new google.picker.DocsView()
+    const docsView = new google.picker.DocsView()
       .setIncludeFolders(true)
-      .setSelectFolderEnabled(true)
-      .setMimeTypes('application/vnd.google-apps.folder')
-
-    // File picker view — lets user select individual files
-    const filesView = new google.picker.DocsView()
-      .setIncludeFolders(false)
-    filesView.setMimeTypes([
+      .setSelectFolderEnabled(false)
+    docsView.setMimeTypes([
       'application/pdf',
       'application/vnd.google-apps.document',
       'application/vnd.google-apps.spreadsheet',
@@ -108,32 +60,19 @@ export async function pickFiles(clientId, apiKey) {
     ].join(','))
 
     const picker = new google.picker.PickerBuilder()
-      .addView(folderView)
-      .addView(filesView)
+      .addView(docsView)
       .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
       .setOAuthToken(token)
       .setDeveloperKey(apiKey)
-      .setCallback(async (data) => {
+      .setCallback((data) => {
         if (data.action === google.picker.Action.PICKED) {
-          try {
-            let files = []
-            for (const doc of data.docs) {
-              if (doc.mimeType === 'application/vnd.google-apps.folder') {
-                const folderFiles = await listFolderFiles(token, doc.id)
-                files = files.concat(folderFiles)
-              } else {
-                files.push({
-                  id: doc.id,
-                  name: doc.name,
-                  mimeType: doc.mimeType,
-                  size: doc.sizeBytes,
-                })
-              }
-            }
-            resolve({ token, files })
-          } catch (e) {
-            reject(e)
-          }
+          const files = data.docs.map(doc => ({
+            id: doc.id,
+            name: doc.name,
+            mimeType: doc.mimeType,
+            size: doc.sizeBytes,
+          }))
+          resolve({ token, files })
         } else if (data.action === google.picker.Action.CANCEL) {
           reject(new Error('popup_closed'))
         }
@@ -145,6 +84,15 @@ export async function pickFiles(clientId, apiKey) {
 }
 
 // ── Full Drive listing (drive.readonly scope) ─────────────
+const SUPPORTED_MIME = [
+  'application/pdf',
+  'application/vnd.google-apps.document',
+  'application/vnd.google-apps.spreadsheet',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain', 'text/csv', 'text/markdown',
+  'image/png', 'image/jpeg',
+]
+
 export async function listFiles(token) {
   const q = SUPPORTED_MIME.map(t => `mimeType='${t}'`).join(' or ')
   let allFiles = []
