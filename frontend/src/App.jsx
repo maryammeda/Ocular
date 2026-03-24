@@ -3,7 +3,7 @@ import { Search, FolderOpen, Upload, Loader2, FileText, FileCode, FileImage, Fil
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import { engine } from './engine'
-import { downloadFile, pickFiles } from './gdrive'
+import { authorize, listFiles, downloadFile, pickFiles } from './gdrive'
 import ApertureCanvas from './ApertureCanvas'
 import ParticleCanvas from './ParticleCanvas'
 import ParticleTitle from './ParticleTitle'
@@ -499,6 +499,8 @@ function App() {
   const [chatOpen, setChatOpen] = useState(false)
   const [scanPanelOpen, setScanPanelOpen] = useState(false)
   const [snapCount, setSnapCount] = useState(0)
+  const [showFullDriveSetup, setShowFullDriveSetup] = useState(false)
+  const [userClientId, setUserClientId] = useState(() => localStorage.getItem('ocular_user_gdrive_client_id') || '')
   const inputRef = useRef(null)
   const historyRef = useRef(null)
   const dragCounter = useRef(0)
@@ -634,6 +636,36 @@ function App() {
     }
   }
 
+  const handleFullDriveScan = async () => {
+    setScanPanelOpen(false)
+    if (!userClientId.trim()) return setShowFullDriveSetup(true)
+    try {
+      const token = await authorize(userClientId.trim())
+      setScanLabel('Fetching files from Google Drive')
+      setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false)
+      const files = await listFiles(token)
+      await processDriveFiles(token, files, `Indexing ${files.length} files from Google Drive`)
+    } catch (e) {
+      if (!e.message?.includes('popup_closed')) notify(e.message, 'error')
+      setScanning(false)
+    }
+  }
+
+  const startFullDriveScan = async () => {
+    if (!userClientId.trim()) return notify('Please enter a Client ID.', 'error')
+    localStorage.setItem('ocular_user_gdrive_client_id', userClientId.trim())
+    setShowFullDriveSetup(false)
+    try {
+      const token = await authorize(userClientId.trim())
+      setScanLabel('Fetching files from Google Drive')
+      setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false)
+      const files = await listFiles(token)
+      await processDriveFiles(token, files, `Indexing ${files.length} files from Google Drive`)
+    } catch (e) {
+      if (!e.message?.includes('popup_closed')) notify(e.message, 'error')
+      setScanning(false)
+    }
+  }
 
   // ── Drag & drop ──────────────────────────────────────────
   const handleDragEnter = (e) => { e.preventDefault(); dragCounter.current++; setDragging(true) }
@@ -899,7 +931,8 @@ function App() {
               <div className="flex-1 p-8 pt-4 space-y-3">
                 {[
                   { icon: FolderOpen, title: 'Scan Folder', desc: 'Choose a folder on your computer to index', action: handleScan },
-                  { icon: Cloud, title: 'Google Drive', desc: 'Pick files or folders from Google Drive', action: handleQuickScan },
+                  { icon: Cloud, title: 'Select from Drive', desc: 'Pick files or folders from Google Drive', action: handleQuickScan },
+                  { icon: Cloud, title: 'Full Drive Scan', desc: 'Index your entire Drive — one-time setup', action: handleFullDriveScan },
                 ].map(({ icon: Icon, title, desc, action }) => (
                   <motion.button key={title}
                     whileHover={{ scale: 1.02 }}
@@ -998,6 +1031,45 @@ function App() {
           </p>
         </div>
       )}
+
+      {/* Full Drive Setup modal */}
+      <AnimatePresence>
+        {showFullDriveSetup && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xl flex items-center justify-center p-4"
+            onClick={() => setShowFullDriveSetup(false)}>
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              className="liquid-glass-strong rounded-2xl p-8 max-w-lg w-full">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="font-heading text-xl text-white">Full Drive Scan Setup</h2>
+                <button onClick={() => setShowFullDriveSetup(false)} className="text-white/30 hover:text-white/60 transition"><X size={18} /></button>
+              </div>
+              <div className="text-white/40 text-[13px] space-y-3 mb-6 leading-relaxed" style={{ fontWeight: 300 }}>
+                <p className="text-white/60">To scan your entire Google Drive, you need your own Google Cloud credentials:</p>
+                <ol className="list-decimal list-inside space-y-2 text-white/40">
+                  <li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-white/60 underline underline-offset-2">Google Cloud Console</a></li>
+                  <li>Create a new project</li>
+                  <li>Enable <span className="text-white/60">Google Drive API</span></li>
+                  <li>Create <span className="text-white/60">OAuth Client ID</span> (Web application)</li>
+                  <li>Add your current URL to <span className="text-white/60">Authorized JavaScript Origins</span></li>
+                  <li>Paste the Client ID below</li>
+                </ol>
+                <p className="text-white/25 text-[11px]">Your Client ID stays in your browser only.</p>
+              </div>
+              <div className="flex gap-3">
+                <input type="text" value={userClientId} onChange={(e) => setUserClientId(e.target.value)}
+                  placeholder="Paste your Client ID here"
+                  className="flex-1 px-4 py-2.5 rounded-full bg-white/[0.06] border border-white/[0.1] text-white/80 text-[13px] placeholder-white/20 outline-none focus:border-white/25 transition" style={{ fontWeight: 300 }} />
+                <button onClick={startFullDriveScan}
+                  className="px-6 py-2.5 rounded-full text-[13px] bg-white text-black hover:bg-white/90 transition-all" style={{ fontWeight: 500 }}>
+                  Start
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Chat Panel */}
       <ChatPanel
