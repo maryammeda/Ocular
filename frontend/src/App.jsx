@@ -42,7 +42,8 @@ function Toast({ message, type, onClose }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: 60 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 60 }}
-      className="fixed top-6 right-6 z-[70] flex items-center gap-3 px-5 py-3.5 rounded-2xl liquid-glass-strong max-w-sm"
+      className="fixed top-6 right-6 z-[70] flex items-center gap-3 px-5 py-3.5 rounded-2xl max-w-sm"
+      style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(40px)', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
     >
       {type === 'success'
         ? <CheckCircle2 size={16} className="text-white/70 shrink-0" />
