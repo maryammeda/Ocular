@@ -43,6 +43,17 @@ export async function authorize(clientId, scope = 'https://www.googleapis.com/au
 // ── Picker-based file selection (drive.file scope) ────────
 export async function pickFiles(clientId, apiKey) {
   const token = await authorize(clientId, 'https://www.googleapis.com/auth/drive.file')
+
+  // Debug: check what scopes were actually granted
+  try {
+    const tokenInfo = await fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${token}`)
+    const info = await tokenInfo.json()
+    console.log('[Ocular Debug] Token scopes:', info.scope)
+    console.log('[Ocular Debug] Token info:', info)
+  } catch (e) {
+    console.warn('[Ocular Debug] Could not check token:', e)
+  }
+
   await loadPicker()
 
   return new Promise((resolve, reject) => {
@@ -66,12 +77,16 @@ export async function pickFiles(clientId, apiKey) {
       .setDeveloperKey(apiKey)
       .setCallback((data) => {
         if (data.action === google.picker.Action.PICKED) {
-          const files = data.docs.map(doc => ({
-            id: doc.id,
-            name: doc.name,
-            mimeType: doc.mimeType,
-            size: doc.sizeBytes,
-          }))
+          const files = data.docs.map(doc => {
+            console.log('[Ocular Debug] Raw picker doc:', JSON.stringify(doc))
+            return {
+              id: doc.id,
+              name: doc.name,
+              mimeType: doc.mimeType,
+              size: doc.sizeBytes,
+            }
+          })
+          console.log('[Ocular Debug] Files to download:', files)
           resolve({ token, files })
         } else if (data.action === google.picker.Action.CANCEL) {
           reject(new Error('popup_closed'))
