@@ -44,19 +44,6 @@ export async function authorize(clientId, scope = 'https://www.googleapis.com/au
 export async function pickFiles(clientId, apiKey) {
   const token = await authorize(clientId, 'https://www.googleapis.com/auth/drive.file')
 
-  // Debug: check what scopes were actually granted
-  try {
-    const tokenInfo = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${token}`)
-    const info = await tokenInfo.json()
-    console.log('[Ocular Debug] Token scopes:', info.scope)
-    console.log('[Ocular Debug] Full token info:', JSON.stringify(info))
-  } catch (e) {
-    console.warn('[Ocular Debug] Token check failed:', e.message)
-  }
-
-  // Debug: test direct file access
-  console.log('[Ocular Debug] Token:', token.slice(0, 20) + '...')
-
   await loadPicker()
 
   return new Promise((resolve, reject) => {
@@ -84,16 +71,12 @@ export async function pickFiles(clientId, apiKey) {
       .setAppId(appId)
       .setCallback((data) => {
         if (data.action === google.picker.Action.PICKED) {
-          const files = data.docs.map(doc => {
-            console.log('[Ocular Debug] Raw picker doc:', JSON.stringify(doc))
-            return {
-              id: doc.id,
-              name: doc.name,
-              mimeType: doc.mimeType,
-              size: doc.sizeBytes,
-            }
-          })
-          console.log('[Ocular Debug] Files to download:', files)
+          const files = data.docs.map(doc => ({
+            id: doc.id,
+            name: doc.name,
+            mimeType: doc.mimeType,
+            size: doc.sizeBytes,
+          }))
           resolve({ token, files })
         } else if (data.action === google.picker.Action.CANCEL) {
           reject(new Error('popup_closed'))
@@ -155,8 +138,6 @@ async function exportFile(token, fileId, mimeType) {
 export async function downloadFile(token, file) {
   const { id, mimeType } = file
 
-  console.log('[Ocular Debug] Downloading:', id, mimeType, file.name)
-
   // Google Workspace files → export as plain text
   if (mimeType === 'application/vnd.google-apps.document') {
     return { type: 'text', data: await exportFile(token, id, 'text/plain'), filetype: 'GDOC' }
@@ -166,16 +147,10 @@ export async function downloadFile(token, file) {
   }
 
   // Regular files → download binary
-  const url = `https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`
-  console.log('[Ocular Debug] Fetch URL:', url)
-  const res = await fetch(url, {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  if (!res.ok) {
-    const errBody = await res.text().catch(() => '')
-    console.error('[Ocular Debug] Download error body:', errBody)
-    throw new Error(`Download failed: ${res.status}`)
-  }
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`)
 
   // Text files
   if (mimeType.startsWith('text/')) {
