@@ -686,6 +686,8 @@ function App() {
   }
 
   return (
+    <>
+    <AnimatePresence>{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}</AnimatePresence>
     <div className="min-h-screen bg-black text-white selection:bg-white/20 relative"
       style={{ fontFamily: "'Barlow', sans-serif" }}
       onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
@@ -993,7 +995,6 @@ function App() {
       </motion.button>
 
       {/* ── OVERLAYS ──────────────────────────────────────── */}
-      <AnimatePresence>{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}</AnimatePresence>
       <AnimatePresence>{scanning && <ScanOverlay label={scanLabel} fileCount={scanCount} currentFile={scanFile} isOcr={isOcr} />}</AnimatePresence>
 
       {/* Drag & drop overlay */}
@@ -1071,6 +1072,7 @@ function App() {
         onSearchFile={(filename) => { setChatOpen(false); setQuery(filename); runSearch(filename) }}
       />
     </div>
+    </>
   )
 }
 
