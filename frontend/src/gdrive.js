@@ -73,11 +73,15 @@ export async function pickFiles(clientId, apiKey) {
       'image/png', 'image/jpeg',
     ].join(','))
 
+    // appId = project number from OAuth Client ID (before the dash)
+    const appId = clientId.split('-')[0]
+
     const picker = new google.picker.PickerBuilder()
       .addView(docsView)
       .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
       .setOAuthToken(token)
       .setDeveloperKey(apiKey)
+      .setAppId(appId)
       .setCallback((data) => {
         if (data.action === google.picker.Action.PICKED) {
           const files = data.docs.map(doc => {
