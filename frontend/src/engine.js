@@ -274,10 +274,7 @@ class SearchEngine {
       'where','which','while','who','whom','why','with','you','your','yours',
     ])
     const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !stopWords.has(w))
-    if (!words.length) return this.documents.slice(0, limit).map(d => ({
-      filename: d.filename, filepath: d.filepath, snippet: (d.content || '').slice(0, 200),
-      filetype: d.filetype, matches: 0, isImage: d.isImage, imageData: d.imageData,
-    }))
+    if (!words.length) return []
 
     const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     const pattern = new RegExp(`\\b(${escaped.join('|')})`, 'gi')
