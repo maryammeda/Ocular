@@ -282,7 +282,7 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
     setLoading(true)
 
     try {
-      const searchResults = engine.retrieve(q, 5)
+      const searchResults = engine.retrieve(q, 10)
       const sources = searchResults.map(r => {
         const doc = engine.getDocument(r.filepath)
         return {

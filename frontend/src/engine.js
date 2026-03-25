@@ -258,7 +258,7 @@ class SearchEngine {
   }
 
   // ── Fuzzy retrieval for chat/RAG ─────────────────────────
-  retrieve(query, limit = 5) {
+  retrieve(query, limit = 10) {
     if (!query.trim()) return []
     const stopWords = new Set([
       'a','an','the','is','are','was','were','be','been','being','have','has','had',
@@ -272,6 +272,12 @@ class SearchEngine {
       'that','their','theirs','them','themselves','then','there','these','they','this',
       'those','through','to','too','under','until','up','very','we','what','when',
       'where','which','while','who','whom','why','with','you','your','yours',
+      'tell','find','show','give','look','know','want','need','think','say','said',
+      'make','like','take','come','see','go','ask','use','try','help','let','keep',
+      'put','call','run','move','play','pay','hear','seem','feel','leave','bring',
+      'talk','turn','start','open','close','read','write','set','learn','change',
+      'follow','stop','hold','sit','stand','lose','happen','include','file','document',
+      'pdf','image','screenshot','folder','doc','docs','files','documents','png','jpg',
     ])
     const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !stopWords.has(w))
     if (!words.length) return []
