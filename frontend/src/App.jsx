@@ -971,29 +971,6 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* ── FLOATING ACTION BUTTONS ───────────────────────── */}
-      {/* Scan FAB */}
-      <motion.button
-        onClick={() => setScanPanelOpen(true)}
-        initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.5, type: 'spring' }}
-        whileHover={{ scale: 1.08 }}
-        className="fixed bottom-8 right-8 z-30 w-14 h-14 rounded-full liquid-glass-strong flex items-center justify-center text-white/60 hover:text-white transition-all"
-        style={{ boxShadow: '0 0 0 0 rgba(255,255,255,0), 0 4px 20px rgba(0,0,0,0.3)' }}
-      >
-        <ScanLine size={20} />
-      </motion.button>
-
-      {/* Chat FAB */}
-      <motion.button
-        onClick={() => setChatOpen(true)}
-        initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.6, type: 'spring' }}
-        whileHover={{ scale: 1.08 }}
-        className="fixed bottom-8 left-8 z-30 w-14 h-14 rounded-full liquid-glass-strong flex items-center justify-center text-white/60 hover:text-white transition-all"
-        style={{ boxShadow: '0 0 0 0 rgba(255,255,255,0), 0 4px 20px rgba(0,0,0,0.3)' }}
-      >
-        <MessageCircle size={20} />
-      </motion.button>
-
       {/* ── OVERLAYS ──────────────────────────────────────── */}
       <AnimatePresence>{scanning && <ScanOverlay label={scanLabel} fileCount={scanCount} currentFile={scanFile} isOcr={isOcr} />}</AnimatePresence>
 
