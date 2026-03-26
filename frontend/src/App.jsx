@@ -235,10 +235,30 @@ function RotatingTips() {
   )
 }
 
-// ── Chat History ──────────────────────────────────────────
-const CHK = 'ocular_chat_messages'
-function getChatHistory() { try { return JSON.parse(localStorage.getItem(CHK)) || [] } catch { return [] } }
-function saveChatHistory(msgs) { localStorage.setItem(CHK, JSON.stringify(msgs.slice(-50))) }
+// ── Chat History (multi-conversation) ─────────────────────
+const CHK = 'ocular_chats'
+const ACTIVE_CHK = 'ocular_active_chat'
+
+function getAllChats() {
+  try { return JSON.parse(localStorage.getItem(CHK)) || [] } catch { return [] }
+}
+function saveAllChats(chats) {
+  localStorage.setItem(CHK, JSON.stringify(chats.slice(0, 20))) // keep last 20 conversations
+}
+function getActiveId() {
+  return localStorage.getItem(ACTIVE_CHK) || null
+}
+function setActiveId(id) {
+  localStorage.setItem(ACTIVE_CHK, id)
+}
+function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+}
+function getChatTitle(msgs) {
+  const first = msgs.find(m => m.role === 'user')
+  if (!first) return 'New Chat'
+  return first.text.slice(0, 40) + (first.text.length > 40 ? '...' : '')
+}
 
 // ── Typing Indicator ──────────────────────────────────────
 function TypingDots() {
@@ -255,13 +275,27 @@ function TypingDots() {
 
 // ── Chat Panel ────────────────────────────────────────────
 function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
-  const [messages, setMessages] = useState(getChatHistory)
+  const [chats, setChats] = useState(getAllChats)
+  const [activeChat, setActiveChat] = useState(() => {
+    const id = getActiveId()
+    const all = getAllChats()
+    return all.find(c => c.id === id) || null
+  })
+  const [messages, setMessages] = useState(() => activeChat?.messages || [])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const endRef = useRef(null)
   const inputRef = useRef(null)
 
-  useEffect(() => { saveChatHistory(messages) }, [messages])
+  // Save messages to active chat
+  useEffect(() => {
+    if (!activeChat) return
+    const updated = chats.map(c => c.id === activeChat.id ? { ...c, messages } : c)
+    setChats(updated)
+    saveAllChats(updated)
+  }, [messages])
+
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 300)
   }, [open])
@@ -269,12 +303,58 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
-  const newChat = () => { setMessages([]); localStorage.removeItem(CHK) }
+  const newChat = () => {
+    const chat = { id: generateId(), messages: [], created: Date.now() }
+    const updated = [chat, ...chats]
+    setChats(updated)
+    saveAllChats(updated)
+    setActiveChat(chat)
+    setActiveId(chat.id)
+    setMessages([])
+    setShowHistory(false)
+  }
+
+  const switchChat = (chat) => {
+    setActiveChat(chat)
+    setActiveId(chat.id)
+    setMessages(chat.messages || [])
+    setShowHistory(false)
+  }
+
+  const deleteChat = (e, chatId) => {
+    e.stopPropagation()
+    const updated = chats.filter(c => c.id !== chatId)
+    setChats(updated)
+    saveAllChats(updated)
+    if (activeChat?.id === chatId) {
+      if (updated.length > 0) {
+        switchChat(updated[0])
+      } else {
+        setActiveChat(null)
+        setMessages([])
+      }
+    }
+  }
+
+  // Auto-create a chat if none exists when sending first message
+  const ensureActiveChat = () => {
+    if (!activeChat) {
+      const chat = { id: generateId(), messages: [], created: Date.now() }
+      const updated = [chat, ...chats]
+      setChats(updated)
+      saveAllChats(updated)
+      setActiveChat(chat)
+      setActiveId(chat.id)
+      return chat
+    }
+    return activeChat
+  }
 
   const sendMessage = async () => {
     const q = input.trim()
     if (!q || loading) return
     setInput('')
+    ensureActiveChat()
 
     const userMsg = { role: 'user', text: q }
     const aiMsg = { role: 'ai', text: '', sources: [] }
@@ -369,103 +449,158 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
   return (
     <AnimatePresence>
       {open && (
-        <motion.div
-          initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-          className="fixed bottom-0 left-0 right-0 z-50 flex flex-col"
-          style={{
-            height: '70vh',
-            background: 'linear-gradient(0deg, rgba(0,0,0,0.99), rgba(8,8,8,0.98))',
-            backdropFilter: 'blur(60px)',
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '24px 24px 0 0',
-          }}
-        >
-          {/* Handle */}
-          <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-2" />
+        <>
+          {/* Backdrop */}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
 
-          {/* Header */}
-          <div className="flex items-center justify-between px-8 pt-2 pb-4">
-            <span className="font-heading text-xl text-white">Ocular AI</span>
-            <div className="flex items-center gap-2">
-              <button onClick={newChat}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all" style={{ fontWeight: 400 }}>
-                <Plus size={12} /> New
-              </button>
-              <button onClick={onClose} className="text-white/30 hover:text-white/60 transition p-1"><X size={16} /></button>
-            </div>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-8 py-4 space-y-6">
-            {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full text-center gap-4">
-                <Sparkles size={28} className="text-white/15" />
-                {indexedCount > 0 ? (
-                  <>
-                    <p className="text-white/30 text-sm" style={{ fontWeight: 300 }}>Ask anything about your files</p>
-                    <p className="text-white/15 text-xs">{indexedCount} files indexed</p>
-                  </>
-                ) : (
-                  <p className="text-white/30 text-sm" style={{ fontWeight: 300 }}>Index some files first</p>
-                )}
-              </div>
-            )}
-
-            {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] ${msg.role === 'user'
-                  ? 'liquid-glass-strong rounded-2xl rounded-br-sm px-5 py-3'
-                  : 'w-full'}`}>
-                  {msg.role === 'user' ? (
-                    <p className="text-[0.88rem] text-white/80 leading-relaxed" style={{ fontWeight: 300 }}>{msg.text}</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {msg.isError ? (
-                        <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20">
-                          <AlertCircle size={14} className="text-red-400/70 mt-0.5 shrink-0" />
-                          <p className="text-[0.88rem] text-red-300/70 leading-relaxed">{msg.text}</p>
-                        </div>
-                      ) : msg.text ? (
-                        <div className="text-[0.88rem] text-white/70 leading-relaxed prose prose-invert prose-sm max-w-none
-                          [&_p]:mb-2 [&_p:last-child]:mb-0
-                          [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5
-                          [&_code]:bg-white/[0.08] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[12px]
-                          [&_pre]:bg-white/[0.05] [&_pre]:border [&_pre]:border-white/[0.08] [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto
-                          [&_strong]:text-white/90 [&_h1]:text-white/90 [&_h2]:text-white/90 [&_h3]:text-white/90
-                          [&_a]:text-white/60 [&_a]:underline" style={{ fontWeight: 300 }}>
-                          <ReactMarkdown>{msg.text}</ReactMarkdown>
-                        </div>
-                      ) : loading && i === messages.length - 1 ? (
-                        <TypingDots />
-                      ) : null}
+          {/* Panel — slides from right, takes ~1/3 of screen */}
+          <motion.div
+            initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            className="fixed top-0 right-0 bottom-0 z-50 flex"
+            style={{
+              width: 'min(520px, 40vw)',
+              minWidth: '360px',
+              background: 'linear-gradient(180deg, rgba(8,8,8,0.99), rgba(0,0,0,0.99))',
+              backdropFilter: 'blur(60px)',
+              borderLeft: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            {/* Chat history sidebar */}
+            <AnimatePresence>
+              {showHistory && (
+                <motion.div
+                  initial={{ width: 0, opacity: 0 }} animate={{ width: 200, opacity: 1 }} exit={{ width: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="h-full overflow-hidden flex-shrink-0"
+                  style={{ borderRight: '1px solid rgba(255,255,255,0.06)' }}
+                >
+                  <div className="w-[200px] h-full flex flex-col">
+                    <div className="px-3 pt-5 pb-3">
+                      <button onClick={newChat}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] text-white/50 hover:text-white/80 hover:bg-white/[0.06] transition-all border border-white/[0.08]" style={{ fontWeight: 400 }}>
+                        <Plus size={12} /> New Chat
+                      </button>
                     </div>
-                  )}
+                    <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5">
+                      {chats.map(chat => (
+                        <div key={chat.id}
+                          onClick={() => switchChat(chat)}
+                          className={`group flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all text-[11px] truncate ${
+                            activeChat?.id === chat.id ? 'bg-white/[0.08] text-white/70' : 'text-white/35 hover:bg-white/[0.04] hover:text-white/50'
+                          }`} style={{ fontWeight: 300 }}>
+                          <span className="truncate">{getChatTitle(chat.messages)}</span>
+                          <button onClick={(e) => deleteChat(e, chat.id)}
+                            className="opacity-0 group-hover:opacity-100 text-white/20 hover:text-white/60 transition shrink-0 ml-1">
+                            <X size={10} />
+                          </button>
+                        </div>
+                      ))}
+                      {chats.length === 0 && (
+                        <p className="text-white/15 text-[10px] text-center px-3 pt-4" style={{ fontWeight: 300 }}>No conversations yet</p>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Main chat area */}
+            <div className="flex-1 flex flex-col min-w-0">
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setShowHistory(!showHistory)}
+                    className="text-white/30 hover:text-white/60 transition p-1">
+                    <Clock size={16} />
+                  </button>
+                  <span className="font-heading text-lg text-white">Ocular AI</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={newChat}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all" style={{ fontWeight: 400 }}>
+                    <Plus size={12} /> New
+                  </button>
+                  <button onClick={onClose} className="text-white/30 hover:text-white/60 transition p-1"><X size={16} /></button>
                 </div>
               </div>
-            ))}
 
-            {loading && messages.length > 0 && messages[messages.length - 1]?.text && (
-              <div className="flex justify-start"><TypingDots /></div>
-            )}
-            <div ref={endRef} />
-          </div>
+              {/* Divider */}
+              <div className="h-px mx-5" style={{ background: 'rgba(255,255,255,0.06)' }} />
 
-          {/* Input */}
-          <div className="px-8 pb-8 pt-4">
-            <div className="liquid-glass-strong rounded-full flex items-center px-5 h-12">
-              <input ref={inputRef} type="text" value={input}
-                onChange={(e) => setInput(e.target.value)} onKeyDown={handleKey}
-                placeholder={indexedCount > 0 ? "Ask about your documents..." : "Index files first..."}
-                disabled={loading || indexedCount === 0}
-                className="flex-1 bg-transparent border-none outline-none text-white text-[0.88rem] placeholder-white/25 disabled:opacity-30" style={{ fontWeight: 300 }} />
-              <button onClick={sendMessage} disabled={!input.trim() || loading || indexedCount === 0}
-                className="w-8 h-8 rounded-full bg-white flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed transition-opacity">
-                <ArrowUp size={16} className="text-black" />
-              </button>
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+                {messages.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-full text-center gap-4">
+                    <Sparkles size={28} className="text-white/15" />
+                    {indexedCount > 0 ? (
+                      <>
+                        <p className="text-white/30 text-sm" style={{ fontWeight: 300 }}>Ask anything about your files</p>
+                        <p className="text-white/15 text-xs">{indexedCount} files indexed</p>
+                      </>
+                    ) : (
+                      <p className="text-white/30 text-sm" style={{ fontWeight: 300 }}>Index some files first</p>
+                    )}
+                  </div>
+                )}
+
+                {messages.map((msg, i) => (
+                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[90%] ${msg.role === 'user'
+                      ? 'liquid-glass-strong rounded-2xl rounded-br-sm px-4 py-2.5'
+                      : 'w-full'}`}>
+                      {msg.role === 'user' ? (
+                        <p className="text-[0.85rem] text-white/80 leading-relaxed" style={{ fontWeight: 300 }}>{msg.text}</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {msg.isError ? (
+                            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20">
+                              <AlertCircle size={14} className="text-red-400/70 mt-0.5 shrink-0" />
+                              <p className="text-[0.85rem] text-red-300/70 leading-relaxed">{msg.text}</p>
+                            </div>
+                          ) : msg.text ? (
+                            <div className="text-[0.85rem] text-white/70 leading-relaxed prose prose-invert prose-sm max-w-none
+                              [&_p]:mb-2 [&_p:last-child]:mb-0
+                              [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5
+                              [&_code]:bg-white/[0.08] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[12px]
+                              [&_pre]:bg-white/[0.05] [&_pre]:border [&_pre]:border-white/[0.08] [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto
+                              [&_strong]:text-white/90 [&_h1]:text-white/90 [&_h2]:text-white/90 [&_h3]:text-white/90
+                              [&_a]:text-white/60 [&_a]:underline" style={{ fontWeight: 300 }}>
+                              <ReactMarkdown>{msg.text}</ReactMarkdown>
+                            </div>
+                          ) : loading && i === messages.length - 1 ? (
+                            <TypingDots />
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {loading && messages.length > 0 && messages[messages.length - 1]?.text && (
+                  <div className="flex justify-start"><TypingDots /></div>
+                )}
+                <div ref={endRef} />
+              </div>
+
+              {/* Input */}
+              <div className="px-5 pb-5 pt-3">
+                <div className="liquid-glass-strong rounded-full flex items-center px-4 h-11">
+                  <input ref={inputRef} type="text" value={input}
+                    onChange={(e) => setInput(e.target.value)} onKeyDown={handleKey}
+                    placeholder={indexedCount > 0 ? "Ask about your documents..." : "Index files first..."}
+                    disabled={loading || indexedCount === 0}
+                    className="flex-1 bg-transparent border-none outline-none text-white text-[0.85rem] placeholder-white/25 disabled:opacity-30" style={{ fontWeight: 300 }} />
+                  <button onClick={sendMessage} disabled={!input.trim() || loading || indexedCount === 0}
+                    className="w-7 h-7 rounded-full bg-white flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed transition-opacity">
+                    <ArrowUp size={14} className="text-black" />
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </motion.div>
+          </motion.div>
+        </>
       )}
     </AnimatePresence>
   )
