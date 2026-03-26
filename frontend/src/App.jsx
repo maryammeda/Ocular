@@ -282,84 +282,20 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
     setLoading(true)
 
     try {
-      // TF-IDF retrieval with sublinear TF and minimal stop words
-      const totalDocs = engine.count || 1
+      // Simple approach: send ALL documents to the AI, let it figure out relevance.
+      // Truncate each doc to fit within model context limits.
+      const allDocs = engine.documents || []
+      if (!allDocs.length) throw new Error('No documents indexed yet. Scan a folder or connect Google Drive first.')
 
-      // Minimal stop list: ONLY grammatical words that are meaningless in any context
-      const noise = new Set([
-        'a','an','the','i','me','my','we','us','our','you','your','he','she','it',
-        'its','his','her','they','them','their','am','is','are','was','were','be',
-        'been','being','do','does','did','has','have','had','at','by','in','of',
-        'on','to','for','with','from','up','as','or','and','but','not','no','so',
-        'if','than','that','this','these','those','what','which','who','whom',
-      ])
+      // Budget: ~80K chars total for sources. Divide evenly across docs.
+      const MAX_TOTAL_CHARS = 80000
+      const charsPerDoc = Math.max(200, Math.floor(MAX_TOTAL_CHARS / allDocs.length))
 
-      const words = q.toLowerCase().split(/\s+/)
-        .map(w => w.replace(/[^a-z0-9]/g, ''))
-        .filter(w => w.length > 2 && !noise.has(w))
-
-      if (!words.length) throw new Error('Could not understand your question. Try using more specific keywords.')
-
-      // Collect search results per word
-      const wordHits = new Map()
-      for (const word of words) {
-        const hits = engine.search(word)
-        wordHits.set(word, { hits, df: hits.length })
-      }
-
-      // Auto-detect noise: words appearing in >40% of docs are too common
-      const threshold = totalDocs * 0.4
-      const meaningfulWords = words.filter(w => {
-        const info = wordHits.get(w)
-        return info && info.df > 0 && info.df <= threshold
-      })
-
-      // If all words were too common, fall back to all words
-      const useWords = meaningfulWords.length > 0 ? meaningfulWords : words
-
-      // Score docs with sublinear TF-IDF
-      const scored = new Map()
-
-      for (const word of useWords) {
-        const info = wordHits.get(word)
-        if (!info || info.df === 0) continue
-        const idf = Math.log(1 + totalDocs / info.df)
-
-        for (const hit of info.hits) {
-          // Sublinear TF: log(1 + count) prevents high-count common words from dominating
-          const tf = Math.log(1 + hit.matches)
-          const score = tf * idf
-
-          const existing = scored.get(hit.filepath)
-          if (existing) {
-            existing.tfidfScore += score
-            existing.wordsMatched++
-          } else {
-            scored.set(hit.filepath, { ...hit, tfidfScore: score, wordsMatched: 1 })
-          }
-        }
-      }
-
-      // Big boost for docs matching multiple query words
-      for (const entry of scored.values()) {
-        const coverage = entry.wordsMatched / useWords.length
-        entry.tfidfScore *= (1 + coverage * 2)
-      }
-
-      const searchResults = [...scored.values()]
-        .sort((a, b) => b.tfidfScore - a.tfidfScore)
-        .slice(0, 10)
-
-      const sources = searchResults.map(r => {
-        const doc = engine.getDocument(r.filepath)
-        return {
-          filename: r.filename,
-          filepath: r.filepath,
-          content: (doc?.content || r.snippet || '').slice(0, 3000),
-        }
-      })
-
-      if (!sources.length) throw new Error('No relevant documents found for your question. Try indexing more files or asking about something in your indexed documents.')
+      const sources = allDocs.map(doc => ({
+        filename: doc.filename,
+        filepath: doc.filepath,
+        content: (doc.content || '').slice(0, charsPerDoc),
+      })).filter(s => s.content.length > 0)
 
       const res = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
