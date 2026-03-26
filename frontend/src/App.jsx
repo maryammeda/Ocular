@@ -697,7 +697,19 @@ function App() {
 
     let count = 0
     let skipped = 0
-    const BATCH_SIZE = 5
+
+    // Skip files already indexed (by filepath)
+    const existingPaths = new Set(engine.documents.map(d => d.filepath))
+    const newFiles = files.filter(f => !existingPaths.has(`Google Drive/${f.name}`))
+    const alreadyIndexed = files.length - newFiles.length
+
+    if (alreadyIndexed > 0) {
+      count = alreadyIndexed
+      onProgress(count, `${alreadyIndexed} files already indexed, processing new ones...`)
+    }
+
+    // Process 15 files concurrently — fast for network I/O without overloading
+    const BATCH_SIZE = 15
 
     const processFile = async (file) => {
       const result = await downloadFile(token, file)
@@ -729,8 +741,8 @@ function App() {
       })
     }
 
-    for (let i = 0; i < files.length; i += BATCH_SIZE) {
-      const batch = files.slice(i, i + BATCH_SIZE)
+    for (let i = 0; i < newFiles.length; i += BATCH_SIZE) {
+      const batch = newFiles.slice(i, i + BATCH_SIZE)
       const results = await Promise.allSettled(batch.map(f => processFile(f)))
       for (let j = 0; j < results.length; j++) {
         if (results[j].status === 'fulfilled') {
