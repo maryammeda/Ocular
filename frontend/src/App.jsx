@@ -823,7 +823,7 @@ function App() {
       <div className="grain-overlay" />
 
       {/* ── NAVBAR ────────────────────────────────────────── */}
-      <div style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 2rem)', maxWidth: '56rem', zIndex: 50 }}>
+      <div style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 2rem)', maxWidth: '72rem', zIndex: 50 }}>
         <motion.nav
           initial={{ y: -18, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 1.1 }}
@@ -862,7 +862,7 @@ function App() {
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             transition={{ delay: 0.3, duration: 1 }}
-            className="w-full max-w-[960px] mb-6"
+            className="w-full max-w-[1200px] mb-6"
           >
             <ParticleTitle text="OCULAR" />
           </motion.div>
@@ -872,7 +872,7 @@ function App() {
             initial={{ opacity: 0, filter: 'blur(8px)' }}
             animate={{ opacity: 1, filter: 'blur(0px)' }}
             transition={{ delay: 0.8, duration: 0.8 }}
-            className="text-white/50 text-[1rem] text-center max-w-lg mb-6"
+            className="text-white/50 text-[1rem] text-center max-w-2xl mb-6"
             style={{ fontWeight: 300 }}
           >
             Search inside your screenshots, documents, and images. Powered by computer vision and OCR — your files are no longer invisible.
@@ -895,7 +895,7 @@ function App() {
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 1.1, duration: 0.6 }}
-            className="w-full max-w-2xl relative" ref={historyRef}
+            className="w-full max-w-3xl relative" ref={historyRef}
           >
             <form onSubmit={handleSearch}>
               <div className="liquid-glass-strong rounded-full flex items-center px-6 h-14">
@@ -959,7 +959,7 @@ function App() {
       {/* ── RESULTS SECTION ───────────────────────────────── */}
       {(hasSearched || results.length > 0) && (
         <section className="bg-black px-6 py-16 min-h-[40vh]">
-          <div className="max-w-5xl mx-auto">
+          <div className="max-w-7xl mx-auto">
             <AnimatePresence mode="wait">
               {results.length > 0 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-between mb-8">
@@ -971,7 +971,7 @@ function App() {
               )}
             </AnimatePresence>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               <AnimatePresence>
                 {results.map((item, i) => (
                   <ResultCard key={`${item.filepath}-${i}`} item={item} index={i} searchQuery={query} />
@@ -993,7 +993,7 @@ function App() {
       {/* Empty state */}
       {!hasSearched && !results.length && (
         <section className="bg-black px-6 py-20">
-          <div className="max-w-lg mx-auto text-center">
+          <div className="max-w-2xl mx-auto text-center">
             <p className="text-white/25 text-sm mb-6" style={{ fontWeight: 300 }}>
               {indexedCount > 0
                 ? `${indexedCount} files ready — start searching`
@@ -1006,7 +1006,7 @@ function App() {
 
       {/* ── FOOTER ────────────────────────────────────────── */}
       <footer className="bg-black px-6 pb-10 pt-20">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-7xl mx-auto">
           <div className="h-px w-full mb-8" style={{ background: 'rgba(255,255,255,0.12)' }} />
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-white/[0.38] text-xs" style={{ fontWeight: 300 }}>
