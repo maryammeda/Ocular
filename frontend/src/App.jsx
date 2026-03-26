@@ -282,73 +282,59 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
     setLoading(true)
 
     try {
-      // Smart retrieval: extract meaningful words, search each individually,
-      // combine and deduplicate results by filepath, score by total matches
-      const chatStopWords = new Set([
-        'a','an','the','is','are','was','were','be','been','being','have','has','had',
-        'do','does','did','will','would','could','should','can','may','might','shall',
-        'about','above','after','again','all','also','am','and','any','at','because',
-        'before','between','both','but','by','down','during','each','few','for','from',
-        'further','get','got','he','her','here','hers','herself','him','himself','his',
-        'how','i','if','in','into','it','its','itself','just','me','more','most','my',
-        'myself','no','nor','not','now','of','off','on','once','only','or','other','our',
-        'ours','ourselves','out','over','own','same','she','so','some','such','than',
-        'that','their','theirs','them','themselves','then','there','these','they','this',
-        'those','through','to','too','under','until','up','very','we','what','when',
-        'where','which','while','who','whom','why','with','you','your','yours',
-        'tell','find','show','give','look','know','want','need','think','say','said',
-        'make','like','take','come','see','go','ask','use','try','help','let','keep',
-        'anything','everything','something','nothing','contain','contains','talk','talks',
-        'file','files','document','documents','folder','pdf','image','screenshot',
-        'doc','docs','png','jpg','word','words','please','thanks','thank',
-        'explain','describe','summarize','summarise','list','define','definition',
-        'mean','means','meaning','really','actually','basically','details','detail',
-        'information','info','much','many','some','any','well','good','bad',
-        'yes','yeah','no','ok','okay','sure','right','um','uh','hmm',
-      ])
+      // TF-IDF retrieval: no stop words needed — rare words automatically
+      // score higher because they appear in fewer documents
+      const totalDocs = engine.count || 1
       const words = q.toLowerCase().split(/\s+/)
         .map(w => w.replace(/[^a-z0-9]/g, ''))
-        .filter(w => w.length > 1 && !chatStopWords.has(w))
+        .filter(w => w.length > 1)
 
-      const scored = new Map() // filepath -> { doc info, totalScore }
+      if (!words.length) throw new Error('No relevant documents found. Try a more specific question.')
 
-      // Step 1: Search the combined meaningful phrase (highest priority)
-      // e.g. "nervous tissue" finds docs with both words together
-      if (words.length >= 2) {
-        const phrase = words.join(' ')
-        const phraseHits = engine.search(phrase)
-        for (const hit of phraseHits) {
-          scored.set(hit.filepath, { ...hit, totalScore: hit.matches * 10 }) // phrase matches weighted 10x
-        }
-      }
+      // For each word, find how many docs contain it (document frequency)
+      // and collect per-doc match counts (term frequency)
+      const wordDocFreq = new Map() // word -> number of docs containing it
+      const wordHits = new Map()    // word -> Map(filepath -> hit)
 
-      // Step 2: Search each word individually
       for (const word of words) {
         const hits = engine.search(word)
-        for (const hit of hits) {
-          const existing = scored.get(hit.filepath)
+        wordDocFreq.set(word, hits.length)
+        const hitMap = new Map()
+        for (const hit of hits) hitMap.set(hit.filepath, hit)
+        wordHits.set(word, hitMap)
+      }
+
+      // Score each document using TF-IDF
+      const scored = new Map() // filepath -> { hit, tfidfScore }
+
+      for (const word of words) {
+        const df = wordDocFreq.get(word) || 0
+        if (df === 0) continue
+        // IDF: rare words (low df) get high weight, common words get low weight
+        const idf = Math.log(1 + totalDocs / df)
+        const hitMap = wordHits.get(word)
+
+        for (const [filepath, hit] of hitMap) {
+          const tf = hit.matches // how many times this word appears in this doc
+          const score = tf * idf
+
+          const existing = scored.get(filepath)
           if (existing) {
-            existing.totalScore += hit.matches
+            existing.tfidfScore += score
+            existing.wordsMatched++
           } else {
-            scored.set(hit.filepath, { ...hit, totalScore: hit.matches })
+            scored.set(filepath, { ...hit, tfidfScore: score, wordsMatched: 1 })
           }
         }
       }
 
-      // Step 3: Boost docs that match MORE of the query words
-      for (const [filepath, entry] of scored) {
-        const doc = engine.getDocument(filepath)
-        const content = ((doc?.content || '') + ' ' + entry.filename).toLowerCase()
-        let wordsMatched = 0
-        for (const w of words) {
-          if (content.includes(w)) wordsMatched++
-        }
-        // Docs matching all query words get a big boost
-        entry.totalScore *= (1 + wordsMatched / words.length)
+      // Boost docs that match more query words
+      for (const entry of scored.values()) {
+        entry.tfidfScore *= (1 + entry.wordsMatched / words.length)
       }
 
       const searchResults = [...scored.values()]
-        .sort((a, b) => b.totalScore - a.totalScore)
+        .sort((a, b) => b.tfidfScore - a.tfidfScore)
         .slice(0, 10)
 
       const sources = searchResults.map(r => {
