@@ -218,20 +218,18 @@ function RotatingTips() {
     return () => clearInterval(timer)
   }, [])
   return (
-    <div className="h-6 relative overflow-hidden">
-      <AnimatePresence mode="wait">
-        <motion.p
-          key={index}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ duration: 0.3 }}
-          className="text-white/40 text-xs absolute inset-x-0 text-center" style={{ fontWeight: 300 }}
-        >
-          tip: {TIPS[index]}
-        </motion.p>
-      </AnimatePresence>
-    </div>
+    <AnimatePresence mode="wait">
+      <motion.p
+        key={index}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -6 }}
+        transition={{ duration: 0.3 }}
+        className="text-white/40 text-xs text-center" style={{ fontWeight: 300 }}
+      >
+        tip: {TIPS[index]}
+      </motion.p>
+    </AnimatePresence>
   )
 }
 
@@ -950,12 +948,11 @@ function App() {
             </AnimatePresence>
           </motion.div>
 
-        </motion.div>
+          <div className="mt-5">
+            <RotatingTips />
+          </div>
 
-        {/* Tips — positioned above the bottom fade */}
-        <div className="absolute bottom-16 left-0 right-0 z-10 flex justify-center">
-          <RotatingTips />
-        </div>
+        </motion.div>
 
         {/* Bottom fade */}
         <div className="absolute bottom-0 left-0 right-0 z-5 h-[200px]"
