@@ -856,7 +856,7 @@ function App() {
 
         <motion.div
           style={{ y: heroY, opacity: heroOpacity }}
-          className="relative z-10 flex flex-col items-center justify-center h-full px-6 pt-20"
+          className="relative z-10 flex flex-col items-center h-full px-6 pt-[18vh]"
         >
           {/* Particle Title */}
           <motion.div
