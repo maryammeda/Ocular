@@ -282,7 +282,56 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
     setLoading(true)
 
     try {
-      const searchResults = engine.retrieve(q, 10)
+      // Smart retrieval: extract meaningful words, search each individually,
+      // combine and deduplicate results by filepath, score by total matches
+      const chatStopWords = new Set([
+        'a','an','the','is','are','was','were','be','been','being','have','has','had',
+        'do','does','did','will','would','could','should','can','may','might','shall',
+        'about','above','after','again','all','also','am','and','any','at','because',
+        'before','between','both','but','by','down','during','each','few','for','from',
+        'further','get','got','he','her','here','hers','herself','him','himself','his',
+        'how','i','if','in','into','it','its','itself','just','me','more','most','my',
+        'myself','no','nor','not','now','of','off','on','once','only','or','other','our',
+        'ours','ourselves','out','over','own','same','she','so','some','such','than',
+        'that','their','theirs','them','themselves','then','there','these','they','this',
+        'those','through','to','too','under','until','up','very','we','what','when',
+        'where','which','while','who','whom','why','with','you','your','yours',
+        'tell','find','show','give','look','know','want','need','think','say','said',
+        'make','like','take','come','see','go','ask','use','try','help','let','keep',
+        'anything','everything','something','nothing','contain','contains','talk','talks',
+        'file','files','document','documents','folder','pdf','image','screenshot',
+        'doc','docs','png','jpg','word','words','please','thanks','thank',
+      ])
+      const words = q.toLowerCase().split(/\s+/)
+        .map(w => w.replace(/[^a-z0-9]/g, ''))
+        .filter(w => w.length > 1 && !chatStopWords.has(w))
+
+      const scored = new Map() // filepath -> { doc info, totalScore }
+
+      for (const word of words) {
+        const hits = engine.search(word)
+        for (const hit of hits) {
+          const existing = scored.get(hit.filepath)
+          if (existing) {
+            existing.totalScore += hit.matches
+          } else {
+            scored.set(hit.filepath, { ...hit, totalScore: hit.matches })
+          }
+        }
+      }
+
+      // If individual words found nothing, try the full query as a phrase
+      if (scored.size === 0 && q.trim().length > 0) {
+        const hits = engine.search(q)
+        for (const hit of hits) {
+          scored.set(hit.filepath, { ...hit, totalScore: hit.matches })
+        }
+      }
+
+      const searchResults = [...scored.values()]
+        .sort((a, b) => b.totalScore - a.totalScore)
+        .slice(0, 10)
+
       const sources = searchResults.map(r => {
         const doc = engine.getDocument(r.filepath)
         return {
@@ -292,7 +341,7 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
         }
       })
 
-      if (!sources.length) throw new Error('No relevant documents found. Index some files first.')
+      if (!sources.length) throw new Error('No relevant documents found for your question. Try indexing more files or asking about something in your indexed documents.')
 
       const res = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
