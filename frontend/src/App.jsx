@@ -228,7 +228,7 @@ function RotatingTips() {
           transition={{ duration: 0.3 }}
           className="text-white/20 text-xs absolute inset-x-0" style={{ fontWeight: 300 }}
         >
-          {TIPS[index]}
+          tip: {TIPS[index]}
         </motion.p>
       </AnimatePresence>
     </div>
@@ -949,6 +949,15 @@ function App() {
               )}
             </AnimatePresence>
           </motion.div>
+
+          {/* Tips */}
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            transition={{ delay: 1.3, duration: 0.6 }}
+            className="mt-6"
+          >
+            <RotatingTips />
+          </motion.div>
         </motion.div>
 
         {/* Bottom fade */}
@@ -990,19 +999,6 @@ function App() {
         </section>
       )}
 
-      {/* Empty state */}
-      {!hasSearched && !results.length && (
-        <section className="bg-black px-6 py-20">
-          <div className="max-w-2xl mx-auto text-center">
-            <p className="text-white/25 text-sm mb-6" style={{ fontWeight: 300 }}>
-              {indexedCount > 0
-                ? `${indexedCount} files ready — start searching`
-                : 'Index a folder or connect Google Drive to get started'}
-            </p>
-            <RotatingTips />
-          </div>
-        </section>
-      )}
 
       {/* ── FOOTER ────────────────────────────────────────── */}
       <footer className="bg-black px-6 pb-10 pt-20">
