@@ -226,7 +226,7 @@ function RotatingTips() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.3 }}
-          className="text-white/20 text-xs absolute inset-x-0" style={{ fontWeight: 300 }}
+          className="text-white/40 text-xs absolute inset-x-0 text-center" style={{ fontWeight: 300 }}
         >
           tip: {TIPS[index]}
         </motion.p>
@@ -950,15 +950,12 @@ function App() {
             </AnimatePresence>
           </motion.div>
 
-          {/* Tips */}
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            transition={{ delay: 1.3, duration: 0.6 }}
-            className="mt-6"
-          >
-            <RotatingTips />
-          </motion.div>
         </motion.div>
+
+        {/* Tips — positioned above the bottom fade */}
+        <div className="absolute bottom-16 left-0 right-0 z-10 flex justify-center">
+          <RotatingTips />
+        </div>
 
         {/* Bottom fade */}
         <div className="absolute bottom-0 left-0 right-0 z-5 h-[200px]"
