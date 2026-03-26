@@ -282,55 +282,68 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
     setLoading(true)
 
     try {
-      // TF-IDF retrieval: no stop words needed — rare words automatically
-      // score higher because they appear in fewer documents
+      // TF-IDF retrieval with sublinear TF and minimal stop words
       const totalDocs = engine.count || 1
+
+      // Minimal stop list: ONLY grammatical words that are meaningless in any context
+      const noise = new Set([
+        'a','an','the','i','me','my','we','us','our','you','your','he','she','it',
+        'its','his','her','they','them','their','am','is','are','was','were','be',
+        'been','being','do','does','did','has','have','had','at','by','in','of',
+        'on','to','for','with','from','up','as','or','and','but','not','no','so',
+        'if','than','that','this','these','those','what','which','who','whom',
+      ])
+
       const words = q.toLowerCase().split(/\s+/)
         .map(w => w.replace(/[^a-z0-9]/g, ''))
-        .filter(w => w.length > 1)
+        .filter(w => w.length > 2 && !noise.has(w))
 
-      if (!words.length) throw new Error('No relevant documents found. Try a more specific question.')
+      if (!words.length) throw new Error('Could not understand your question. Try using more specific keywords.')
 
-      // For each word, find how many docs contain it (document frequency)
-      // and collect per-doc match counts (term frequency)
-      const wordDocFreq = new Map() // word -> number of docs containing it
-      const wordHits = new Map()    // word -> Map(filepath -> hit)
-
+      // Collect search results per word
+      const wordHits = new Map()
       for (const word of words) {
         const hits = engine.search(word)
-        wordDocFreq.set(word, hits.length)
-        const hitMap = new Map()
-        for (const hit of hits) hitMap.set(hit.filepath, hit)
-        wordHits.set(word, hitMap)
+        wordHits.set(word, { hits, df: hits.length })
       }
 
-      // Score each document using TF-IDF
-      const scored = new Map() // filepath -> { hit, tfidfScore }
+      // Auto-detect noise: words appearing in >40% of docs are too common
+      const threshold = totalDocs * 0.4
+      const meaningfulWords = words.filter(w => {
+        const info = wordHits.get(w)
+        return info && info.df > 0 && info.df <= threshold
+      })
 
-      for (const word of words) {
-        const df = wordDocFreq.get(word) || 0
-        if (df === 0) continue
-        // IDF: rare words (low df) get high weight, common words get low weight
-        const idf = Math.log(1 + totalDocs / df)
-        const hitMap = wordHits.get(word)
+      // If all words were too common, fall back to all words
+      const useWords = meaningfulWords.length > 0 ? meaningfulWords : words
 
-        for (const [filepath, hit] of hitMap) {
-          const tf = hit.matches // how many times this word appears in this doc
+      // Score docs with sublinear TF-IDF
+      const scored = new Map()
+
+      for (const word of useWords) {
+        const info = wordHits.get(word)
+        if (!info || info.df === 0) continue
+        const idf = Math.log(1 + totalDocs / info.df)
+
+        for (const hit of info.hits) {
+          // Sublinear TF: log(1 + count) prevents high-count common words from dominating
+          const tf = Math.log(1 + hit.matches)
           const score = tf * idf
 
-          const existing = scored.get(filepath)
+          const existing = scored.get(hit.filepath)
           if (existing) {
             existing.tfidfScore += score
             existing.wordsMatched++
           } else {
-            scored.set(filepath, { ...hit, tfidfScore: score, wordsMatched: 1 })
+            scored.set(hit.filepath, { ...hit, tfidfScore: score, wordsMatched: 1 })
           }
         }
       }
 
-      // Boost docs that match more query words
+      // Big boost for docs matching multiple query words
       for (const entry of scored.values()) {
-        entry.tfidfScore *= (1 + entry.wordsMatched / words.length)
+        const coverage = entry.wordsMatched / useWords.length
+        entry.tfidfScore *= (1 + coverage * 2)
       }
 
       const searchResults = [...scored.values()]
