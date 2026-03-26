@@ -421,17 +421,6 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
                     <p className="text-[0.88rem] text-white/80 leading-relaxed" style={{ fontWeight: 300 }}>{msg.text}</p>
                   ) : (
                     <div className="space-y-2">
-                      {msg.sources && msg.sources.length > 0 && (
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          {msg.sources.map((src, j) => (
-                            <button key={j} onClick={() => onSearchFile(src.filename)}
-                              className="flex items-center gap-1.5 liquid-glass rounded-full px-3 py-1 text-[0.7rem] text-white/50 hover:text-white/80 transition-all">
-                              <FileText size={10} />
-                              {src.filename}
-                            </button>
-                          ))}
-                        </div>
-                      )}
                       {msg.isError ? (
                         <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20">
                           <AlertCircle size={14} className="text-red-400/70 mt-0.5 shrink-0" />
