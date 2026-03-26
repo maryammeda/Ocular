@@ -227,7 +227,7 @@ function RotatingTips() {
         transition={{ duration: 0.3 }}
         className="text-white/40 text-xs text-center" style={{ fontWeight: 300 }}
       >
-        tip: {TIPS[index]}
+        Tip: {TIPS[index]}
       </motion.p>
     </AnimatePresence>
   )
