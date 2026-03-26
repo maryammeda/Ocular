@@ -301,6 +301,10 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
         'anything','everything','something','nothing','contain','contains','talk','talks',
         'file','files','document','documents','folder','pdf','image','screenshot',
         'doc','docs','png','jpg','word','words','please','thanks','thank',
+        'explain','describe','summarize','summarise','list','define','definition',
+        'mean','means','meaning','really','actually','basically','details','detail',
+        'information','info','much','many','some','any','well','good','bad',
+        'yes','yeah','no','ok','okay','sure','right','um','uh','hmm',
       ])
       const words = q.toLowerCase().split(/\s+/)
         .map(w => w.replace(/[^a-z0-9]/g, ''))
@@ -308,6 +312,17 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
 
       const scored = new Map() // filepath -> { doc info, totalScore }
 
+      // Step 1: Search the combined meaningful phrase (highest priority)
+      // e.g. "nervous tissue" finds docs with both words together
+      if (words.length >= 2) {
+        const phrase = words.join(' ')
+        const phraseHits = engine.search(phrase)
+        for (const hit of phraseHits) {
+          scored.set(hit.filepath, { ...hit, totalScore: hit.matches * 10 }) // phrase matches weighted 10x
+        }
+      }
+
+      // Step 2: Search each word individually
       for (const word of words) {
         const hits = engine.search(word)
         for (const hit of hits) {
@@ -320,12 +335,16 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
         }
       }
 
-      // If individual words found nothing, try the full query as a phrase
-      if (scored.size === 0 && q.trim().length > 0) {
-        const hits = engine.search(q)
-        for (const hit of hits) {
-          scored.set(hit.filepath, { ...hit, totalScore: hit.matches })
+      // Step 3: Boost docs that match MORE of the query words
+      for (const [filepath, entry] of scored) {
+        const doc = engine.getDocument(filepath)
+        const content = ((doc?.content || '') + ' ' + entry.filename).toLowerCase()
+        let wordsMatched = 0
+        for (const w of words) {
+          if (content.includes(w)) wordsMatched++
         }
+        // Docs matching all query words get a big boost
+        entry.totalScore *= (1 + wordsMatched / words.length)
       }
 
       const searchResults = [...scored.values()]
