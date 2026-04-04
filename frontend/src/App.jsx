@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Search, FolderOpen, Upload, Loader2, FileText, FileCode, FileImage, File, CheckCircle2, AlertCircle, X, Clock, Trash2, Sparkles, Plus, MessageCircle, Cloud, ArrowUp, ScanLine } from 'lucide-react'
+import { Search, FolderOpen, Upload, Loader2, FileText, FileCode, FileImage, File, CheckCircle2, AlertCircle, X, Clock, Trash2, Sparkles, Plus, MessageCircle, Cloud, ArrowUp, ScanLine, Copy, Download } from 'lucide-react'
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import { engine } from './engine'
@@ -106,8 +106,16 @@ function ScanOverlay({ label, fileCount, currentFile, isOcr }) {
 // ── Result Card ────────────────────────────────────────────
 function ResultCard({ item, index, searchQuery }) {
   const [hovered, setHovered] = useState(false)
+  const [copied, setCopied] = useState(false)
   const timer = useRef(null)
   const doc = useRef(null)
+
+  const handleCopy = (e) => {
+    e.stopPropagation()
+    navigator.clipboard.writeText(item.filepath)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const onEnter = () => {
     timer.current = setTimeout(() => {
@@ -174,7 +182,14 @@ function ResultCard({ item, index, searchQuery }) {
         <p className="text-[0.82rem] text-white/45 leading-relaxed [&>b]:text-white/90 [&>b]:font-medium" style={{ fontWeight: 300 }}
           dangerouslySetInnerHTML={{ __html: item.snippet }} />
 
-        <p className="text-[10px] text-white/20 mt-3 font-mono truncate">{item.filepath}</p>
+        <div className="flex items-center justify-between mt-3 gap-2">
+          <p className="text-[10px] text-white/20 font-mono truncate">{item.filepath}</p>
+          <button onClick={handleCopy}
+            className="shrink-0 text-white/20 hover:text-white/60 transition-colors"
+            title="Copy path">
+            {copied ? <CheckCircle2 size={12} className="text-white/50" /> : <Copy size={12} />}
+          </button>
+        </div>
 
         <AnimatePresence>
           {hovered && (
@@ -535,6 +550,26 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
                   <span className="font-heading text-lg text-white">Ocular AI</span>
                 </div>
                 <div className="flex items-center gap-1.5">
+                  {messages.filter(m => m.text && !m.isError).length > 0 && (
+                    <button
+                      onClick={() => {
+                        const text = messages
+                          .filter(m => m.text && !m.isError)
+                          .map(m => `${m.role === 'user' ? 'You' : 'Ocular AI'}: ${m.text}`)
+                          .join('\n\n')
+                        const blob = new Blob([text], { type: 'text/plain' })
+                        const url = URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = `${getChatTitle(messages) || 'chat'}.txt`
+                        a.click()
+                        URL.revokeObjectURL(url)
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+                      style={{ fontWeight: 400 }} title="Export chat">
+                      <Download size={12} />
+                    </button>
+                  )}
                   <button onClick={newChat}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all" style={{ fontWeight: 400 }}>
                     <Plus size={12} /> New
@@ -678,6 +713,10 @@ function App() {
         setChatOpen(false)
         inputRef.current?.focus()
         inputRef.current?.select()
+      }
+      if (e.key === 'Escape') {
+        setScanPanelOpen(false)
+        setChatOpen(false)
       }
     }
     document.addEventListener('keydown', handler)
