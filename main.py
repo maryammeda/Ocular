@@ -150,14 +150,14 @@ class ChatSource(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str
-    sources: list[ChatSource]
+    sources: list[ChatSource] = []  # optional — server does its own FTS retrieval
 
 @app.post("/chat")
 def chat(request: ChatRequest):
     from backend.rag import stream_response
-    sources = [s.model_dump() for s in request.sources]
+    client_sources = [s.model_dump() for s in request.sources] if request.sources else None
     return StreamingResponse(
-        stream_response(request.question, sources),
+        stream_response(request.question, client_sources),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

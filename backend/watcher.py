@@ -73,8 +73,7 @@ class _IndexHandler(FileSystemEventHandler):
             filepath = os.path.normpath(event.src_path)
             try:
                 db = DocumentDB()
-                db.cursor.execute("DELETE FROM documents WHERE filepath = ?", (filepath,))
-                db.conn.commit()
+                db.delete_document(filepath)  # removes from documents + file_cache
                 db.close()
                 print(f"[watcher] Removed from index: {os.path.basename(filepath)}")
             except Exception as e:

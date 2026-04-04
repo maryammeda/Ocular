@@ -10,6 +10,8 @@ from PIL import Image
 from backend.db import DocumentDB
 
 IGNORED_DIRS = {".git", ".vscode", ".idea", "node_modules", "venv", "__pycache__", "AppData"}
+MAX_WORKERS = 12       # I/O-bound file extraction benefits from more threads
+MAX_PDF_PAGES = 50     # Cap to avoid spending minutes on 500-page textbooks
 
 
 class FileCrawler:
@@ -23,7 +25,6 @@ class FileCrawler:
         self._db_lock = threading.Lock()
 
     def crawl(self):
-        # Collect all supported files first, filtering bad folders
         files_to_process = []
         for dirpath, dirnames, filenames in os.walk(self.root_directory):
             dirnames[:] = [
@@ -41,11 +42,11 @@ class FileCrawler:
             print("No supported files found.")
             return []
 
-        print(f"Found {total} files to index...")
+        print(f"Found {total} files to process...")
         documents = []
         done = 0
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             futures = {
                 executor.submit(self._process_file, fp): fp
                 for fp in files_to_process
@@ -55,18 +56,31 @@ class FileCrawler:
                 result = future.result()
                 fp = futures[future]
                 filename = os.path.basename(fp)
-                if result:
+                if result is True:
+                    # File already indexed and unchanged — silently skip
+                    pass
+                elif result:
                     documents.append(result)
                     print(f"[{done}/{total}] Indexed: {filename}", flush=True)
                 else:
                     print(f"[{done}/{total}] Skipped: {filename}", flush=True)
 
-        print(f"Indexing complete. {len(documents)} files indexed.")
+        print(f"Indexing complete. {len(documents)} new/updated files indexed.")
         return documents
 
     def _process_file(self, filepath):
         filename = os.path.basename(filepath)
         ext = os.path.splitext(filename)[1].lower()
+
+        # Skip files that haven't changed since the last scan
+        try:
+            mtime = os.path.getmtime(filepath)
+            with self._db_lock:
+                if self.db.is_indexed(filepath, mtime):
+                    return True  # unchanged — nothing to do
+        except OSError:
+            mtime = 0.0
+
         try:
             if ext == ".pdf":
                 content = self._process_pdf(filepath)
@@ -86,6 +100,7 @@ class FileCrawler:
             if content:
                 with self._db_lock:
                     self.db.add_document(filename, filepath, content, filetype)
+                    self.db.upsert_cache(filepath, mtime)
                 return {
                     "filename": filename,
                     "filepath": filepath,
@@ -100,7 +115,7 @@ class FileCrawler:
         try:
             with pdfplumber.open(filepath) as pdf:
                 text = ""
-                for page in pdf.pages:
+                for page in pdf.pages[:MAX_PDF_PAGES]:
                     page_text = page.extract_text()
                     if page_text:
                         text += page_text
@@ -134,13 +149,11 @@ class FileCrawler:
 
             image = Image.open(filepath)
 
-            # Resize large images to speed up OCR
             if image.width > 1000:
                 ratio = 1000 / image.width
                 new_size = (1000, int(image.height * ratio))
                 image = image.resize(new_size, Image.LANCZOS)
 
-            # Convert to greyscale for faster OCR
             image = image.convert("L")
 
             text = pytesseract.image_to_string(image)
