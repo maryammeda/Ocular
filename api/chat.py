@@ -18,8 +18,8 @@ Rules:
 - Use bullet points or numbered lists when listing multiple items.
 """
 
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "qwen/qwen3.6-plus:free"
+OPENROUTER_URL = "https://api.groq.com/openai/v1/chat/completions"
+MODEL = "llama-3.3-70b-versatile"
 
 
 class ChatSource(BaseModel):
@@ -62,7 +62,7 @@ User question: {question}"""
 
 
 def stream_response(question, sources):
-    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    api_key = os.getenv("GROQ_API_KEY", "").strip()
     if not api_key:
         yield f"event: error\ndata: {json.dumps({'message': 'Ocular AI is not configured yet.'})}\n\n"
         return
