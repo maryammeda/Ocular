@@ -33,6 +33,21 @@ class ChatRequest(BaseModel):
     sources: list[ChatSource]
 
 
+def _top_sources(question: str, sources: list, top_n: int = 8) -> list:
+    """Score sources by keyword relevance and return the top N most relevant."""
+    words = [w.lower() for w in question.split() if len(w) > 3]
+    if not words:
+        return sources[:top_n]
+    scored = []
+    for s in sources:
+        content_lower = (s.get("content") or "").lower()
+        score = sum(content_lower.count(w) for w in words)
+        scored.append((score, s))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    relevant = [s for sc, s in scored if sc > 0]
+    return (relevant or [s for _, s in scored])[:top_n]
+
+
 def build_context(question, sources):
     context_parts = []
     for i, src in enumerate(sources, 1):
@@ -55,6 +70,8 @@ def stream_response(question, sources):
     if not sources:
         yield f"event: error\ndata: {json.dumps({'message': 'No relevant documents found. Index some files first.'})}\n\n"
         return
+
+    sources = _top_sources(question, sources, top_n=8)
 
     source_list = [{"filename": s["filename"], "filepath": s["filepath"]} for s in sources]
     yield f"event: sources\ndata: {json.dumps(source_list)}\n\n"
