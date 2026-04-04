@@ -95,13 +95,27 @@ class SearchEngine {
     })
   }
 
+  // Write queue — serializes IndexedDB writes so concurrent workers don't abort each other's transactions
+  _writeQueue = Promise.resolve()
+
   async _save(doc) {
-    const tx = this._db.transaction(STORE_NAME, 'readwrite')
-    tx.objectStore(STORE_NAME).put(doc)
-    await new Promise((resolve, reject) => {
-      tx.oncomplete = resolve
-      tx.onerror = () => reject(tx.error)
+    this._writeQueue = this._writeQueue.then(() => {
+      const tx = this._db.transaction(STORE_NAME, 'readwrite')
+      tx.objectStore(STORE_NAME).put(doc)
+      return new Promise((resolve, reject) => {
+        tx.oncomplete = resolve
+        tx.onerror = () => reject(tx.error)
+      })
+    }).catch(err => {
+      console.warn('IDB write failed, retrying:', err?.message)
+      const tx = this._db.transaction(STORE_NAME, 'readwrite')
+      tx.objectStore(STORE_NAME).put(doc)
+      return new Promise((resolve, reject) => {
+        tx.oncomplete = resolve
+        tx.onerror = () => reject(tx.error)
+      })
     })
+    return this._writeQueue
   }
 
   // ── Scan a single directory ──────────────────────────────
@@ -333,10 +347,10 @@ class SearchEngine {
       imageData,
       driveMtime,
     }
+    await this._save(doc)
     const idx = this.documents.findIndex(d => d.id === doc.id)
     if (idx >= 0) this.documents[idx] = doc
     else this.documents.push(doc)
-    await this._save(doc)
   }
 
   async ocrFromDataURL(dataUrl) {
