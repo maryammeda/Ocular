@@ -109,6 +109,9 @@ export async function listFiles(token) {
       fields: 'nextPageToken,files(id,name,mimeType,size,modifiedTime)',
       pageSize: '1000',
       orderBy: 'modifiedTime desc',
+      includeItemsFromAllDrives: 'true',
+      supportsAllDrives: 'true',
+      corpora: 'allDrives',
     })
     if (pageToken) params.set('pageToken', pageToken)
 
