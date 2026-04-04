@@ -35,7 +35,7 @@ async function getMammoth() {
 }
 
 // ── OCR with parallel workers (lazy-loaded) ──────────────
-const OCR_WORKERS = Math.min(navigator.hardwareConcurrency || 4, 6)
+const OCR_WORKERS = 2
 let _ocrScheduler = null
 let _ocrIdleTimer = null
 async function getOcrScheduler() {

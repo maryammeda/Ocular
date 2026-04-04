@@ -831,7 +831,7 @@ function App() {
     }
 
     // More workers when OCR is off (pure network I/O) vs on (CPU-bound OCR limits gains)
-    const CONCURRENCY = ocrEnabled ? 25 : 40
+    const CONCURRENCY = ocrEnabled ? 6 : 10
     let idx = 0
     await Promise.all(
       Array.from({ length: CONCURRENCY }, async () => {
