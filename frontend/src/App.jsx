@@ -659,6 +659,20 @@ function App() {
   }, [])
 
   useEffect(() => { if (ready) inputRef.current?.focus() }, [ready])
+
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setScanPanelOpen(false)
+        setChatOpen(false)
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [])
   useEffect(() => {
     const h = (e) => {
       if (historyRef.current && !historyRef.current.contains(e.target)) setShowHistory(false)
