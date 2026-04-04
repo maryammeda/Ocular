@@ -322,7 +322,7 @@ class SearchEngine {
   }
 
   // ── Public methods for external integrations ─────────────
-  async addDocument({ filename, filepath, content, filetype, isImage = false, imageData = null }) {
+  async addDocument({ filename, filepath, content, filetype, isImage = false, imageData = null, driveMtime = null }) {
     const doc = {
       id: filepath,
       filename,
@@ -331,6 +331,7 @@ class SearchEngine {
       filetype,
       isImage,
       imageData,
+      driveMtime,
     }
     const idx = this.documents.findIndex(d => d.id === doc.id)
     if (idx >= 0) this.documents[idx] = doc

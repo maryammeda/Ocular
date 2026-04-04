@@ -698,18 +698,20 @@ function App() {
     let count = 0
     let skipped = 0
 
-    // Skip files already indexed (by filepath)
-    const existingPaths = new Set(engine.documents.map(d => d.filepath))
-    const newFiles = files.filter(f => !existingPaths.has(`Google Drive/${f.name}`))
+    // Skip files already indexed with the same modifiedTime (no re-download needed)
+    const existingMtimes = new Map(
+      engine.documents.filter(d => d.driveMtime).map(d => [d.filepath, d.driveMtime])
+    )
+    const newFiles = files.filter(f => {
+      const stored = existingMtimes.get(`Google Drive/${f.name}`)
+      return !stored || stored !== f.modifiedTime
+    })
     const alreadyIndexed = files.length - newFiles.length
 
     if (alreadyIndexed > 0) {
       count = alreadyIndexed
       onProgress(count, `${alreadyIndexed} files already indexed, processing new ones...`)
     }
-
-    // Process 15 files concurrently — fast for network I/O without overloading
-    const BATCH_SIZE = 15
 
     const processFile = async (file) => {
       const result = await downloadFile(token, file)
@@ -738,22 +740,29 @@ function App() {
         filetype: result.filetype,
         isImage,
         imageData,
+        driveMtime: file.modifiedTime || null,
       })
     }
 
-    for (let i = 0; i < newFiles.length; i += BATCH_SIZE) {
-      const batch = newFiles.slice(i, i + BATCH_SIZE)
-      const results = await Promise.allSettled(batch.map(f => processFile(f)))
-      for (let j = 0; j < results.length; j++) {
-        if (results[j].status === 'fulfilled') {
-          count++
-        } else {
-          skipped++
-          console.warn(`Skipped ${batch[j].name}:`, results[j].reason?.message)
+    // 25-worker pool — each worker grabs the next file as soon as it finishes,
+    // no idle waiting for the slowest file in a batch
+    const CONCURRENCY = 25
+    let idx = 0
+    await Promise.all(
+      Array.from({ length: CONCURRENCY }, async () => {
+        while (idx < newFiles.length) {
+          const file = newFiles[idx++]
+          try {
+            await processFile(file)
+            count++
+          } catch (e) {
+            skipped++
+            console.warn(`Skipped ${file.name}:`, e?.message)
+          }
+          onProgress(count, file.name)
         }
-      }
-      onProgress(count, batch[batch.length - 1].name)
-    }
+      })
+    )
 
     setIndexedCount(engine.count)
     setScanning(false)
