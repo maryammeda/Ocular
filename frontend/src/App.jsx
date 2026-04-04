@@ -624,6 +624,7 @@ function App() {
   const [isOcr, setIsOcr] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [scanPanelOpen, setScanPanelOpen] = useState(false)
+  const [clearConfirm, setClearConfirm] = useState(false)
   const [snapCount, setSnapCount] = useState(0)
   const [showFullDriveSetup, setShowFullDriveSetup] = useState(false)
   const [userClientId, setUserClientId] = useState(() => localStorage.getItem('ocular_user_gdrive_client_id') || '')
@@ -672,6 +673,12 @@ function App() {
   const handleSearch = (e) => { e.preventDefault(); runSearch(query) }
   const handleRemoveHistory = (e, q) => { e.stopPropagation(); removeFromHistory(q); setHistory(getHistory()) }
   const handleClearHistory = (e) => { e.stopPropagation(); clearHistory(); setHistory([]) }
+
+  const handleClearIndex = async () => {
+    await engine.clearAll()
+    setIndexedCount(0)
+    setClearConfirm(false)
+  }
   const filteredHistory = query.trim()
     ? history.filter(h => h.toLowerCase().includes(query.toLowerCase()) && h.toLowerCase() !== query.toLowerCase()) : history
 
@@ -1104,6 +1111,44 @@ function App() {
                       }} />
                   </button>
                 </div>
+
+                {/* Clear Index */}
+                {indexedCount > 0 && (
+                  <div className="px-2 pt-5 border-t border-white/[0.06] mt-2">
+                    {!clearConfirm ? (
+                      <button
+                        onClick={() => setClearConfirm(true)}
+                        className="flex items-center gap-2 text-white/25 hover:text-red-400/70 transition-colors duration-200 text-sm"
+                        style={{ fontWeight: 300 }}
+                      >
+                        <Trash2 size={13} />
+                        Clear all indexed files
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-[0.8rem] text-white/40" style={{ fontWeight: 300 }}>
+                          Remove all {indexedCount} indexed files?
+                        </p>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={handleClearIndex}
+                            className="text-[0.82rem] text-red-400/80 hover:text-red-400 transition-colors"
+                            style={{ fontWeight: 400 }}
+                          >
+                            Yes, clear
+                          </button>
+                          <button
+                            onClick={() => setClearConfirm(false)}
+                            className="text-[0.82rem] text-white/30 hover:text-white/60 transition-colors"
+                            style={{ fontWeight: 300 }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </motion.div>
           </>
