@@ -19,7 +19,7 @@ Rules:
 """
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
+MODEL = "meta-llama/llama-3.1-8b-instruct:free"  # Fast 8B model — fits Vercel's 10s timeout
 
 
 class ChatSource(BaseModel):
@@ -78,7 +78,7 @@ def stream_response(question, sources):
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
-                timeout=60.0,
+                timeout=9.0,  # Stay under Vercel Hobby's 10s function limit
             ) as response:
                 if response.status_code == 429 and attempt < 2:
                     response.read()
@@ -125,6 +125,8 @@ def stream_response(question, sources):
         error_msg = str(e)
         if "429" in error_msg or "quota" in error_msg.lower():
             error_msg = "Rate limited. Please wait a moment and try again."
+        elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+            error_msg = "The AI took too long to respond. Try asking a shorter question or try again."
         yield f"event: error\ndata: {json.dumps({'message': error_msg})}\n\n"
 
 
