@@ -12,6 +12,15 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || ''
 const API_URL = import.meta.env.VITE_API_URL || ''
 
+const FILTER_GROUPS = [
+  { id: 'all',    label: 'All' },
+  { id: 'docs',   label: 'Documents', match: ft => ['pdf','PDF','docx','DOCX','doc','DOC','txt','TXT','md','MD','csv','CSV','document'].includes(ft) },
+  { id: 'images', label: 'Images',    match: ft => ['png','PNG','jpg','JPG','jpeg','JPEG','gif','GIF','webp','WEBP','image'].includes(ft) },
+  { id: 'gdocs',  label: 'Google Docs', match: ft => ft === 'GDOC' },
+  { id: 'sheets', label: 'Sheets',    match: ft => ft === 'GSHEET' },
+  { id: 'code',   label: 'Code',      match: ft => ['py','js','jsx','ts','tsx','html','css','json','sql','sh'].includes(ft) },
+]
+
 const fileIconMap = {
   py: FileCode, js: FileCode, jsx: FileCode, ts: FileCode, tsx: FileCode,
   html: FileCode, css: FileCode, json: FileCode, sql: FileCode, sh: FileCode,
@@ -625,6 +634,7 @@ function App() {
   const [scanFile, setScanFile] = useState('')
   const [toast, setToast] = useState(null)
   const [hasSearched, setHasSearched] = useState(false)
+  const [activeFilter, setActiveFilter] = useState('all')
   const [history, setHistory] = useState(getHistory())
   const [showHistory, setShowHistory] = useState(false)
   const [indexedCount, setIndexedCount] = useState(0)
@@ -687,7 +697,7 @@ function App() {
   }, [])
 
   const runSearch = (sq) => {
-    if (!sq.trim()) return; setQuery(sq); setSearching(true); setHasSearched(true); setShowHistory(false)
+    if (!sq.trim()) return; setQuery(sq); setSearching(true); setHasSearched(true); setShowHistory(false); setActiveFilter('all')
     addToHistory(sq); setHistory(getHistory())
     setSnapCount(c => c + 1) // trigger aperture snap
     const r = engine.search(sq)
@@ -1014,38 +1024,76 @@ function App() {
       </section>
 
       {/* ── RESULTS SECTION ───────────────────────────────── */}
-      {(hasSearched || results.length > 0) && (
-        <section className="bg-black px-6 py-16 min-h-[40vh]">
-          <div className="max-w-7xl mx-auto">
-            <AnimatePresence mode="wait">
-              {results.length > 0 && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-between mb-8">
-                  <p className="text-white/50 text-sm" style={{ fontWeight: 300 }}>
-                    <span className="text-white/90" style={{ fontWeight: 500 }}>{results.length.toLocaleString()}</span>
-                    {' '}result{results.length !== 1 ? 's' : ''} for &lsquo;<span className="text-white/70">{query}</span>&rsquo;
-                  </p>
+      {(hasSearched || results.length > 0) && (() => {
+        const visibleFilters = FILTER_GROUPS.filter(f =>
+          f.id === 'all' || results.some(r => f.match?.(r.filetype))
+        )
+        const filteredResults = activeFilter === 'all'
+          ? results
+          : results.filter(r => FILTER_GROUPS.find(f => f.id === activeFilter)?.match?.(r.filetype))
+
+        return (
+          <section className="bg-black px-6 py-16 min-h-[40vh]">
+            <div className="max-w-7xl mx-auto">
+              <AnimatePresence mode="wait">
+                {results.length > 0 && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-8 space-y-4">
+                    <p className="text-white/50 text-sm" style={{ fontWeight: 300 }}>
+                      <span className="text-white/90" style={{ fontWeight: 500 }}>{filteredResults.length.toLocaleString()}</span>
+                      {activeFilter !== 'all' && <span className="text-white/40"> of {results.length.toLocaleString()}</span>}
+                      {' '}result{filteredResults.length !== 1 ? 's' : ''} for &lsquo;<span className="text-white/70">{query}</span>&rsquo;
+                    </p>
+
+                    {visibleFilters.length > 1 && (
+                      <div className="flex flex-wrap gap-2">
+                        {visibleFilters.map(f => {
+                          const count = f.id === 'all' ? results.length : results.filter(r => f.match?.(r.filetype)).length
+                          const active = activeFilter === f.id
+                          return (
+                            <button key={f.id} onClick={() => setActiveFilter(f.id)}
+                              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs transition-all duration-200"
+                              style={{
+                                fontWeight: active ? 500 : 300,
+                                background: active ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
+                                border: `1px solid ${active ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)'}`,
+                                color: active ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)',
+                              }}>
+                              {f.label}
+                              <span style={{ color: active ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)' }}>{count}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <AnimatePresence>
+                  {filteredResults.map((item, i) => (
+                    <ResultCard key={`${item.filepath}-${i}`} item={item} index={i} searchQuery={query} />
+                  ))}
+                </AnimatePresence>
+              </div>
+
+              {hasSearched && !results.length && !searching && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20">
+                  <Search size={28} className="text-white/15 mx-auto mb-4" strokeWidth={1.5} />
+                  <p className="text-white/25 text-sm" style={{ fontWeight: 300 }}>No results found</p>
+                  <p className="text-white/15 text-xs mt-1.5">Try different keywords or index some folders first</p>
                 </motion.div>
               )}
-            </AnimatePresence>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              <AnimatePresence>
-                {results.map((item, i) => (
-                  <ResultCard key={`${item.filepath}-${i}`} item={item} index={i} searchQuery={query} />
-                ))}
-              </AnimatePresence>
+              {hasSearched && results.length > 0 && !filteredResults.length && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20">
+                  <p className="text-white/25 text-sm" style={{ fontWeight: 300 }}>No {FILTER_GROUPS.find(f => f.id === activeFilter)?.label} results</p>
+                </motion.div>
+              )}
             </div>
-
-            {hasSearched && !results.length && !searching && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20">
-                <Search size={28} className="text-white/15 mx-auto mb-4" strokeWidth={1.5} />
-                <p className="text-white/25 text-sm" style={{ fontWeight: 300 }}>No results found</p>
-                <p className="text-white/15 text-xs mt-1.5">Try different keywords or index some folders first</p>
-              </motion.div>
-            )}
-          </div>
-        </section>
-      )}
+          </section>
+        )
+      })()}
 
 
       {/* ── FOOTER ────────────────────────────────────────── */}
