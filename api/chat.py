@@ -30,7 +30,8 @@ class ChatSource(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str
-    sources: list[ChatSource]
+    sources: list[ChatSource] = []
+    history: list[dict] = []
 
 
 def _top_sources(question: str, sources: list, top_n: int = 8) -> list:
@@ -61,7 +62,7 @@ def build_context(question, sources):
 User question: {question}"""
 
 
-def stream_response(question, sources):
+def stream_response(question, sources, history=None):
     api_key = os.getenv("GROQ_API_KEY", "").strip()
     if not api_key:
         yield f"event: error\ndata: {json.dumps({'message': 'Ocular AI is not configured yet.'})}\n\n"
@@ -78,6 +79,12 @@ def stream_response(question, sources):
 
     user_content = build_context(question, sources)
 
+    # Build message thread: system → past exchanges → current question
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": user_content})
+
     try:
         for attempt in range(3):
             with httpx.stream(
@@ -86,10 +93,7 @@ def stream_response(question, sources):
                 json={
                     "model": MODEL,
                     "stream": True,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_content},
-                    ],
+                    "messages": messages,
                 },
                 headers={
                     "Authorization": f"Bearer {api_key}",
@@ -151,7 +155,7 @@ def stream_response(question, sources):
 def chat(request: ChatRequest):
     sources = [s.model_dump() for s in request.sources]
     return StreamingResponse(
-        stream_response(request.question, sources),
+        stream_response(request.question, sources, history=request.history),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

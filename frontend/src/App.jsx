@@ -375,10 +375,20 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
         content: (doc.content || '').slice(0, charsPerDoc),
       })).filter(s => s.content.length > 0)
 
+      // Build conversation history from last 3 completed exchanges
+      const history = []
+      for (let i = 0; i < messages.length - 1; i++) {
+        const m = messages[i], next = messages[i + 1]
+        if (m.role === 'user' && next.role === 'ai' && next.text && !next.isError) {
+          history.push({ role: 'user', content: m.text })
+          history.push({ role: 'assistant', content: next.text })
+        }
+      }
+
       const res = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, sources }),
+        body: JSON.stringify({ question: q, sources, history: history.slice(-6) }),
       })
       if (!res.ok) throw new Error(`Server error: ${res.status}`)
 
