@@ -89,6 +89,7 @@ def stream_response(question, sources):
                     yield f"event: error\ndata: {json.dumps({'message': f'API error: {response.status_code}'})}\n\n"
                     return
 
+                tokens_received = 0
                 for line in response.iter_lines():
                     if not line.startswith("data: "):
                         continue
@@ -97,12 +98,23 @@ def stream_response(question, sources):
                         break
                     try:
                         chunk = json.loads(data)
+                        # Surface any error the model returns inside the payload
+                        if chunk.get("error"):
+                            err = chunk["error"]
+                            msg = err.get("message") or str(err)
+                            yield f"event: error\ndata: {json.dumps({'message': f'OpenRouter error: {msg}'})}\n\n"
+                            return
                         delta = chunk.get("choices", [{}])[0].get("delta", {})
                         text = delta.get("content", "")
                         if text:
+                            tokens_received += 1
                             yield f"event: token\ndata: {json.dumps({'text': text})}\n\n"
                     except (json.JSONDecodeError, IndexError, KeyError):
                         continue
+
+                if tokens_received == 0:
+                    yield f"event: error\ndata: {json.dumps({'message': 'The AI returned an empty response. The model may be overloaded or rate-limited — try again in a moment.'})}\n\n"
+                    return
 
                 yield "event: done\ndata: {}\n\n"
                 return
