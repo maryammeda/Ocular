@@ -621,6 +621,7 @@ function App() {
   const [ready, setReady] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [ocrEnabled, setOcrEnabled] = useState(() => localStorage.getItem('ocular_ocr_enabled') !== 'false')
+  const [includeShared, setIncludeShared] = useState(() => localStorage.getItem('ocular_include_shared') !== 'false')
   const [isOcr, setIsOcr] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [scanPanelOpen, setScanPanelOpen] = useState(false)
@@ -710,8 +711,8 @@ function App() {
       engine.documents.filter(d => d.driveMtime).map(d => [d.filepath, d.driveMtime])
     )
     const newFiles = files.filter(f => {
-      // Skip images entirely when OCR is off — no point downloading them
       if (!ocrEnabled && f.mimeType.startsWith('image/')) return false
+      if (!includeShared && f.ownedByMe === false) return false
       const stored = existingMtimes.get(`Google Drive/${f.name}`)
       return !stored || stored !== f.modifiedTime
     })
@@ -1096,20 +1097,27 @@ function App() {
                   </motion.button>
                 ))}
 
-                {/* OCR Toggle */}
-                <div className="flex items-center justify-between px-2 pt-4">
-                  <span className="text-sm text-white/50" style={{ fontWeight: 300 }}>OCR (Image Scanning)</span>
-                  <button
-                    onClick={() => { const v = !ocrEnabled; setOcrEnabled(v); localStorage.setItem('ocular_ocr_enabled', v) }}
-                    className="relative w-11 h-6 rounded-full transition-colors duration-200"
-                    style={{ background: ocrEnabled ? 'white' : 'rgba(255,255,255,0.1)' }}
-                  >
-                    <div className="absolute top-1 w-4 h-4 rounded-full transition-all duration-200"
-                      style={{
-                        left: ocrEnabled ? '24px' : '4px',
-                        background: ocrEnabled ? 'black' : 'rgba(255,255,255,0.4)',
-                      }} />
-                  </button>
+                {/* Toggles */}
+                <div className="space-y-3 pt-4">
+                  {[
+                    { label: 'OCR (Image Scanning)', value: ocrEnabled, onChange: (v) => { setOcrEnabled(v); localStorage.setItem('ocular_ocr_enabled', v) } },
+                    { label: 'Include Shared Files', value: includeShared, onChange: (v) => { setIncludeShared(v); localStorage.setItem('ocular_include_shared', v) } },
+                  ].map(({ label, value, onChange }) => (
+                    <div key={label} className="flex items-center justify-between px-2">
+                      <span className="text-sm text-white/50" style={{ fontWeight: 300 }}>{label}</span>
+                      <button
+                        onClick={() => onChange(!value)}
+                        className="relative w-11 h-6 rounded-full transition-colors duration-200"
+                        style={{ background: value ? 'white' : 'rgba(255,255,255,0.1)' }}
+                      >
+                        <div className="absolute top-1 w-4 h-4 rounded-full transition-all duration-200"
+                          style={{
+                            left: value ? '24px' : '4px',
+                            background: value ? 'black' : 'rgba(255,255,255,0.4)',
+                          }} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
 
                 {/* Clear Index */}
