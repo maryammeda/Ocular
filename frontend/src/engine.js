@@ -34,7 +34,8 @@ async function getMammoth() {
   return _mammoth
 }
 
-// ── OCR with single worker (lazy-loaded) ─────────────────
+// ── OCR with parallel workers (lazy-loaded) ──────────────
+const OCR_WORKERS = Math.min(navigator.hardwareConcurrency || 4, 6)
 let _ocrScheduler = null
 let _ocrIdleTimer = null
 async function getOcrScheduler() {
@@ -42,16 +43,19 @@ async function getOcrScheduler() {
   if (!_ocrScheduler) {
     const Tesseract = await import('tesseract.js')
     _ocrScheduler = Tesseract.createScheduler()
-    const worker = await Tesseract.createWorker('eng')
-    await worker.setParameters({
+    const params = {
       tessedit_pageseg_mode: '6',
       tessjs_create_hocr: '0',
       tessjs_create_tsv: '0',
       tessjs_create_box: '0',
       tessjs_create_unlv: '0',
       tessjs_create_osd: '0',
-    })
-    _ocrScheduler.addWorker(worker)
+    }
+    await Promise.all(Array.from({ length: OCR_WORKERS }, async () => {
+      const worker = await Tesseract.createWorker('eng')
+      await worker.setParameters(params)
+      _ocrScheduler.addWorker(worker)
+    }))
   }
   return _ocrScheduler
 }
