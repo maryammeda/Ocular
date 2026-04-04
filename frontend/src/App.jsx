@@ -703,6 +703,8 @@ function App() {
       engine.documents.filter(d => d.driveMtime).map(d => [d.filepath, d.driveMtime])
     )
     const newFiles = files.filter(f => {
+      // Skip images entirely when OCR is off — no point downloading them
+      if (!ocrEnabled && f.mimeType.startsWith('image/')) return false
       const stored = existingMtimes.get(`Google Drive/${f.name}`)
       return !stored || stored !== f.modifiedTime
     })
@@ -744,9 +746,8 @@ function App() {
       })
     }
 
-    // 25-worker pool — each worker grabs the next file as soon as it finishes,
-    // no idle waiting for the slowest file in a batch
-    const CONCURRENCY = 25
+    // More workers when OCR is off (pure network I/O) vs on (CPU-bound OCR limits gains)
+    const CONCURRENCY = ocrEnabled ? 25 : 40
     let idx = 0
     await Promise.all(
       Array.from({ length: CONCURRENCY }, async () => {
