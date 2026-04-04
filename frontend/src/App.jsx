@@ -796,8 +796,11 @@ function App() {
       onProgress(count, `${alreadyIndexed} files already indexed, processing new ones...`)
     }
 
+    const withTimeout = (promise, ms) =>
+      Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))])
+
     const processFile = async (file) => {
-      const result = await downloadFile(token, file)
+      const result = await withTimeout(downloadFile(token, file), 15000)
       let content = ''
       let isImage = false
       let imageData = null
@@ -807,12 +810,12 @@ function App() {
       } else if (result.type === 'image') {
         isImage = true
         imageData = result.data
-        content = ocrEnabled ? await engine.ocrFromDataURL(result.data) : ''
+        content = ocrEnabled ? await withTimeout(engine.ocrFromDataURL(result.data), 20000) : ''
       } else if (result.type === 'binary') {
         if (result.mimeType === 'application/pdf') {
-          content = await engine.extractPDFFromBuffer(result.data)
+          content = await withTimeout(engine.extractPDFFromBuffer(result.data), 15000)
         } else {
-          content = await engine.extractDOCXFromBuffer(result.data)
+          content = await withTimeout(engine.extractDOCXFromBuffer(result.data), 10000)
         }
       }
 
