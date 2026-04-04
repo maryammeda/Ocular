@@ -87,6 +87,15 @@ class SearchEngine {
       req.onerror = () => reject(req.error)
     })
     await this._loadAll()
+    // Flush any pending writes before the page unloads
+    window.addEventListener('beforeunload', () => {
+      if (this._writeBatch.length) {
+        const tx = this._db.transaction(STORE_NAME, 'readwrite')
+        const store = tx.objectStore(STORE_NAME)
+        for (const { doc } of this._writeBatch) store.put(doc)
+        this._writeBatch = []
+      }
+    })
   }
 
   async _loadAll() {
@@ -117,27 +126,55 @@ class SearchEngine {
     })
   }
 
-  // Write queue — serializes IndexedDB writes so concurrent workers don't abort each other's transactions
-  _writeQueue = Promise.resolve()
+  // Batched writes — collects docs and flushes them in a single transaction every 200ms
+  _writeBatch = []
+  _flushTimer = null
+  _flushPromise = null
+  _flushResolvers = []
 
   async _save(doc) {
-    this._writeQueue = this._writeQueue.then(() => {
-      const tx = this._db.transaction(STORE_NAME, 'readwrite')
-      tx.objectStore(STORE_NAME).put(doc)
-      return new Promise((resolve, reject) => {
-        tx.oncomplete = resolve
-        tx.onerror = () => reject(tx.error)
-      })
-    }).catch(err => {
-      console.warn('IDB write failed, retrying:', err?.message)
-      const tx = this._db.transaction(STORE_NAME, 'readwrite')
-      tx.objectStore(STORE_NAME).put(doc)
-      return new Promise((resolve, reject) => {
-        tx.oncomplete = resolve
-        tx.onerror = () => reject(tx.error)
-      })
+    return new Promise((resolve, reject) => {
+      this._writeBatch.push({ doc, resolve, reject })
+      if (!this._flushTimer) {
+        this._flushTimer = setTimeout(() => this._flush(), 200)
+      }
     })
-    return this._writeQueue
+  }
+
+  async _flush() {
+    this._flushTimer = null
+    if (!this._writeBatch.length) return
+
+    const batch = this._writeBatch.splice(0)
+    try {
+      const tx = this._db.transaction(STORE_NAME, 'readwrite')
+      const store = tx.objectStore(STORE_NAME)
+      for (const { doc } of batch) {
+        store.put(doc)
+      }
+      await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve
+        tx.onerror = () => reject(tx.error)
+      })
+      for (const { resolve } of batch) resolve()
+    } catch (err) {
+      console.warn('Batch write failed, retrying individually:', err?.message)
+      for (const { doc, resolve, reject } of batch) {
+        try {
+          const tx = this._db.transaction(STORE_NAME, 'readwrite')
+          tx.objectStore(STORE_NAME).put(doc)
+          await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error) })
+          resolve()
+        } catch (e) {
+          reject(e)
+        }
+      }
+    }
+  }
+
+  async _flushNow() {
+    if (this._flushTimer) { clearTimeout(this._flushTimer); this._flushTimer = null }
+    await this._flush()
   }
 
   // ── Scan a single directory ──────────────────────────────
@@ -202,6 +239,7 @@ class SearchEngine {
     }
 
     await walk(dirHandle, dirHandle.name)
+    await this._flushNow()
     scheduleOcrCleanup()
     return count
   }
@@ -464,6 +502,7 @@ class SearchEngine {
         console.warn('Drop item skipped:', e.message)
       }
     }
+    await this._flushNow()
     scheduleOcrCleanup()
     return count
   }
