@@ -16,6 +16,18 @@ export default function ParticleTitle({ text = 'OCULAR' }) {
     const ctx = canvas.getContext('2d')
     let raf
 
+    // Pre-render glow stamp once (reused via drawImage + globalAlpha)
+    const glowStampSize = 32
+    const glowStamp = document.createElement('canvas')
+    glowStamp.width = glowStampSize
+    glowStamp.height = glowStampSize
+    const gsCtx = glowStamp.getContext('2d')
+    const gsg = gsCtx.createRadialGradient(glowStampSize / 2, glowStampSize / 2, 0, glowStampSize / 2, glowStampSize / 2, glowStampSize / 2)
+    gsg.addColorStop(0, 'white')
+    gsg.addColorStop(1, 'transparent')
+    gsCtx.fillStyle = gsg
+    gsCtx.fillRect(0, 0, glowStampSize, glowStampSize)
+
     const init = async () => {
       await document.fonts.load("italic 80px 'Instrument Serif'")
 
@@ -112,15 +124,13 @@ export default function ParticleTitle({ text = 'OCULAR' }) {
         // Fade in
         if (p.opacity < 1) p.opacity = Math.min(1, p.opacity + 0.022)
 
-        // Near cursor glow
+        // Near cursor glow — draw pre-rendered stamp with varying alpha
         if (dist < REPEL_RADIUS * 1.5 && dist > 0) {
           const nearFactor = 1 - dist / (REPEL_RADIUS * 1.5)
           const glowR = p.r * 4
-          const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowR)
-          glow.addColorStop(0, `rgba(255,255,255,${nearFactor * 0.3 * p.opacity})`)
-          glow.addColorStop(1, 'transparent')
-          ctx.fillStyle = glow
-          ctx.fillRect(p.x - glowR, p.y - glowR, glowR * 2, glowR * 2)
+          ctx.globalAlpha = nearFactor * 0.3 * p.opacity
+          ctx.drawImage(glowStamp, p.x - glowR, p.y - glowR, glowR * 2, glowR * 2)
+          ctx.globalAlpha = 1
         }
 
         // Draw particle

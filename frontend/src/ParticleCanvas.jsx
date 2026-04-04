@@ -8,6 +8,19 @@ export default function ParticleCanvas() {
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     let raf
+    let w = 0, h = 0
+
+    // Pre-render gradient stamp once (reused via drawImage + globalAlpha)
+    const stampSize = 32
+    const stamp = document.createElement('canvas')
+    stamp.width = stampSize
+    stamp.height = stampSize
+    const sCtx = stamp.getContext('2d')
+    const sg = sCtx.createRadialGradient(stampSize / 2, stampSize / 2, 0, stampSize / 2, stampSize / 2, stampSize / 2)
+    sg.addColorStop(0, 'white')
+    sg.addColorStop(1, 'transparent')
+    sCtx.fillStyle = sg
+    sCtx.fillRect(0, 0, stampSize, stampSize)
 
     const particles = Array.from({ length: 90 }, () => ({
       x: 0, y: 0,
@@ -21,11 +34,11 @@ export default function ParticleCanvas() {
     const resize = () => {
       const dpr = window.devicePixelRatio || 1
       const rect = canvas.getBoundingClientRect()
-      canvas.width = rect.width * dpr
-      canvas.height = rect.height * dpr
+      w = rect.width
+      h = rect.height
+      canvas.width = w * dpr
+      canvas.height = h * dpr
       ctx.scale(dpr, dpr)
-      const w = rect.width
-      const h = rect.height
       for (const p of particles) {
         if (p.x === 0) {
           p.x = Math.random() * w
@@ -37,8 +50,6 @@ export default function ParticleCanvas() {
     window.addEventListener('resize', resize)
 
     const animate = () => {
-      const w = canvas.getBoundingClientRect().width
-      const h = canvas.getBoundingClientRect().height
       ctx.clearRect(0, 0, w, h)
 
       for (const p of particles) {
@@ -52,13 +63,12 @@ export default function ParticleCanvas() {
         if (p.x > w + 5) p.x = -5
 
         const opacity = p.baseOpacity * (0.65 + 0.35 * Math.sin(p.phase))
+        const size = p.r * 5
 
-        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 2.5)
-        grad.addColorStop(0, `rgba(255,255,255,${opacity})`)
-        grad.addColorStop(1, 'transparent')
-        ctx.fillStyle = grad
-        ctx.fillRect(p.x - p.r * 2.5, p.y - p.r * 2.5, p.r * 5, p.r * 5)
+        ctx.globalAlpha = opacity
+        ctx.drawImage(stamp, p.x - size / 2, p.y - size / 2, size, size)
       }
+      ctx.globalAlpha = 1
 
       raf = requestAnimationFrame(animate)
     }

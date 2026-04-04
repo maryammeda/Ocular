@@ -92,9 +92,27 @@ class SearchEngine {
   async _loadAll() {
     const tx = this._db.transaction(STORE_NAME, 'readonly')
     const store = tx.objectStore(STORE_NAME)
-    this.documents = await new Promise((resolve, reject) => {
+    const allDocs = await new Promise((resolve, reject) => {
       const req = store.getAll()
       req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    // Strip imageData from in-memory docs to save RAM (still in IndexedDB)
+    this.documents = allDocs.map(doc => {
+      if (doc.imageData) {
+        const { imageData, ...rest } = doc
+        return rest
+      }
+      return doc
+    })
+  }
+
+  async getImageData(filepath) {
+    const tx = this._db.transaction(STORE_NAME, 'readonly')
+    const store = tx.objectStore(STORE_NAME)
+    return new Promise((resolve, reject) => {
+      const req = store.get(filepath)
+      req.onsuccess = () => resolve(req.result?.imageData || null)
       req.onerror = () => reject(req.error)
     })
   }
@@ -167,11 +185,13 @@ class SearchEngine {
               imageData,
             }
 
-            const idx = this.documents.findIndex(d => d.id === doc.id)
-            if (idx >= 0) this.documents[idx] = doc
-            else this.documents.push(doc)
-
             await this._save(doc)
+            // Free imageData from RAM after persisting to IndexedDB
+            const memDoc = doc.imageData ? { ...doc, imageData: null } : doc
+            const idx = this.documents.findIndex(d => d.id === memDoc.id)
+            if (idx >= 0) this.documents[idx] = memDoc
+            else this.documents.push(memDoc)
+
             count++
             onProgress?.(count, entry.name, false)
           } catch (e) {
@@ -352,9 +372,11 @@ class SearchEngine {
       driveMtime,
     }
     await this._save(doc)
-    const idx = this.documents.findIndex(d => d.id === doc.id)
-    if (idx >= 0) this.documents[idx] = doc
-    else this.documents.push(doc)
+    // Free imageData from RAM after persisting to IndexedDB
+    const memDoc = doc.imageData ? { ...doc, imageData: null } : doc
+    const idx = this.documents.findIndex(d => d.id === memDoc.id)
+    if (idx >= 0) this.documents[idx] = memDoc
+    else this.documents.push(memDoc)
   }
 
   async ocrFromDataURL(dataUrl) {
@@ -429,10 +451,12 @@ class SearchEngine {
             isImage, imageData,
           }
 
-          const idx = this.documents.findIndex(d => d.id === doc.id)
-          if (idx >= 0) this.documents[idx] = doc
-          else this.documents.push(doc)
           await this._save(doc)
+          // Free imageData from RAM after persisting to IndexedDB
+          const memDoc = doc.imageData ? { ...doc, imageData: null } : doc
+          const idx = this.documents.findIndex(d => d.id === memDoc.id)
+          if (idx >= 0) this.documents[idx] = memDoc
+          else this.documents.push(memDoc)
           count++
           onProgress?.(count, handle.name, false)
         }

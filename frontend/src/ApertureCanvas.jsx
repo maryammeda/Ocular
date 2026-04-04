@@ -51,12 +51,27 @@ export default function ApertureCanvas({ triggerSnap }) {
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     let raf
+    let w = 0, h = 0
+
+    // Pre-render glow stamp once
+    const glowSize = 128
+    const glowStamp = document.createElement('canvas')
+    glowStamp.width = glowSize
+    glowStamp.height = glowSize
+    const gCtx = glowStamp.getContext('2d')
+    const gg = gCtx.createRadialGradient(glowSize / 2, glowSize / 2, 0, glowSize / 2, glowSize / 2, glowSize / 2)
+    gg.addColorStop(0, 'white')
+    gg.addColorStop(1, 'transparent')
+    gCtx.fillStyle = gg
+    gCtx.fillRect(0, 0, glowSize, glowSize)
 
     const resize = () => {
       const dpr = window.devicePixelRatio || 1
       const rect = canvas.getBoundingClientRect()
-      canvas.width = rect.width * dpr
-      canvas.height = rect.height * dpr
+      w = rect.width
+      h = rect.height
+      canvas.width = w * dpr
+      canvas.height = h * dpr
       ctx.scale(dpr, dpr)
     }
     resize()
@@ -64,8 +79,6 @@ export default function ApertureCanvas({ triggerSnap }) {
 
     const animate = () => {
       const s = stateRef.current
-      const w = canvas.getBoundingClientRect().width
-      const h = canvas.getBoundingClientRect().height
       const cx = w / 2
       const cy = h / 2
       const radius = Math.min(w, h) * 0.3
@@ -83,13 +96,12 @@ export default function ApertureCanvas({ triggerSnap }) {
       // Blade rotation
       s.bladeAngle += 0.0015
 
-      // Center glow
+      // Center glow — draw pre-rendered stamp with varying alpha
       const glowPulse = 0.04 + 0.02 * Math.sin(s.breathPhase * 1.3)
-      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 0.7)
-      glow.addColorStop(0, `rgba(255,255,255,${glowPulse})`)
-      glow.addColorStop(1, 'transparent')
-      ctx.fillStyle = glow
-      ctx.fillRect(0, 0, w, h)
+      const glowDrawSize = radius * 1.4
+      ctx.globalAlpha = glowPulse
+      ctx.drawImage(glowStamp, cx - glowDrawSize / 2, cy - glowDrawSize / 2, glowDrawSize, glowDrawSize)
+      ctx.globalAlpha = 1
 
       // Light rays
       for (const ray of s.rays) {

@@ -107,6 +107,7 @@ function ScanOverlay({ label, fileCount, currentFile, isOcr }) {
 function ResultCard({ item, index, searchQuery }) {
   const [hovered, setHovered] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [imgSrc, setImgSrc] = useState(null)
   const timer = useRef(null)
   const doc = useRef(null)
 
@@ -118,9 +119,13 @@ function ResultCard({ item, index, searchQuery }) {
   }
 
   const onEnter = () => {
-    timer.current = setTimeout(() => {
+    timer.current = setTimeout(async () => {
       setHovered(true)
       if (!doc.current) doc.current = engine.getDocument(item.filepath)
+      if (item.isImage && !imgSrc) {
+        const data = await engine.getImageData(item.filepath)
+        if (data) setImgSrc(data)
+      }
     }, 400)
   }
   const onLeave = () => { clearTimeout(timer.current); setHovered(false) }
@@ -196,9 +201,9 @@ function ResultCard({ item, index, searchQuery }) {
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3 }} className="overflow-hidden">
               <div className="mt-4 pt-4 border-t border-white/[0.06]">
-                {preview?.isImage && preview.imageData && (
+                {preview?.isImage && imgSrc && (
                   <div className="space-y-3">
-                    <img src={preview.imageData} alt={preview.filename}
+                    <img src={imgSrc} alt={preview.filename}
                       className="max-h-48 rounded-xl border border-white/10 object-contain" />
                     {preview.content && <p className="text-xs text-white/30 leading-relaxed">{hl(preview.content)}</p>}
                   </div>
@@ -309,14 +314,26 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
   const [showHistory, setShowHistory] = useState(false)
   const endRef = useRef(null)
   const inputRef = useRef(null)
+  const saveTimer = useRef(null)
+  const latestChats = useRef(null)
 
-  // Save messages to active chat
+  // Save messages to active chat (debounced to avoid thrashing localStorage during streaming)
   useEffect(() => {
     if (!activeChat) return
     const updated = chats.map(c => c.id === activeChat.id ? { ...c, messages } : c)
     setChats(updated)
-    saveAllChats(updated)
+    latestChats.current = updated
+    clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => saveAllChats(updated), 500)
   }, [messages])
+
+  // Flush pending save on unmount
+  useEffect(() => {
+    return () => {
+      clearTimeout(saveTimer.current)
+      if (latestChats.current) saveAllChats(latestChats.current)
+    }
+  }, [])
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 300)
