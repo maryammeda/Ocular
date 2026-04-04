@@ -19,7 +19,7 @@ Rules:
 """
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "meta-llama/llama-3.1-8b-instruct:free"  # Fast 8B model — fits Vercel's 10s timeout
+MODEL = "qwen/qwen3.6-plus:free"
 
 
 class ChatSource(BaseModel):
