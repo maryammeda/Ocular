@@ -956,7 +956,7 @@ function App() {
                   : <Search className="text-white/30 shrink-0" size={20} />}
                 <input ref={inputRef} type="text" value={query}
                   onChange={(e) => setQuery(e.target.value)} onClick={() => setShowHistory(true)}
-                  placeholder="Search your knowledge base..."
+                  placeholder={indexedCount > 0 ? `Search ${indexedCount.toLocaleString()} files...` : "Search your knowledge base..."}
                   className="flex-1 bg-transparent border-none outline-none text-white text-[0.95rem] placeholder-white/25 ml-3"
                   style={{ fontWeight: 300 }} />
                 {query && (
@@ -1021,9 +1021,9 @@ function App() {
               {results.length > 0 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-between mb-8">
                   <p className="text-white/50 text-sm" style={{ fontWeight: 300 }}>
-                    Results for &lsquo;<span className="text-white/70">{query}</span>&rsquo;
+                    <span className="text-white/90" style={{ fontWeight: 500 }}>{results.length.toLocaleString()}</span>
+                    {' '}result{results.length !== 1 ? 's' : ''} for &lsquo;<span className="text-white/70">{query}</span>&rsquo;
                   </p>
-                  <span className="text-white/30 text-xs">{results.length} matches</span>
                 </motion.div>
               )}
             </AnimatePresence>
