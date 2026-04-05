@@ -390,6 +390,13 @@ class SearchEngine {
     return this.documents.length
   }
 
+  // Reload from IDB and return the true persisted count — use after scans to get ground truth
+  async syncCount() {
+    await this._flushNow()
+    await this._loadAll()
+    return this.documents.length
+  }
+
   async clearAll() {
     this.documents = []
     const tx = this._db.transaction(STORE_NAME, 'readwrite')

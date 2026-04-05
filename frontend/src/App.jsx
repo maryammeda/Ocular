@@ -781,7 +781,7 @@ function App() {
       const dirHandle = await window.showDirectoryPicker({ mode: 'read' })
       setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false); setScanLabel(`Scanning ${dirHandle.name}`)
       const count = await engine.scanDirectory(dirHandle, onProgress, { ocrEnabled })
-      setIndexedCount(engine.count)
+      setIndexedCount(await engine.syncCount())
       notify(`Done — ${count} files indexed from ${dirHandle.name}`)
     } catch (e) {
       if (e.name !== 'AbortError') notify(e.message, 'error')
@@ -866,8 +866,7 @@ function App() {
       })
     )
 
-    await engine._flushNow()
-    setIndexedCount(engine.count)
+    setIndexedCount(await engine.syncCount())
     setScanning(false)
     const msg = skipped > 0
       ? `Indexed ${count} files from Google Drive (${skipped} skipped)`
@@ -919,7 +918,7 @@ function App() {
     setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false); setScanLabel('Scanning dropped files')
     try {
       const count = await engine.scanDroppedItems(items, onProgress, { ocrEnabled })
-      setIndexedCount(engine.count)
+      setIndexedCount(await engine.syncCount())
       notify(`Done — ${count} files indexed`)
     } catch (err) {
       notify(err.message, 'error')
