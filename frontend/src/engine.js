@@ -130,8 +130,10 @@ class SearchEngine {
   _writeQueue = Promise.resolve()
 
   _save(doc) {
-    this._writeQueue = this._writeQueue.then(() => this._writeOne(doc))
-    return this._writeQueue
+    const result = this._writeQueue.then(() => this._writeOne(doc))
+    // Queue must continue even if this write fails — catch keeps the chain alive
+    this._writeQueue = result.catch(() => {})
+    return result
   }
 
   _writeOne(doc) {
