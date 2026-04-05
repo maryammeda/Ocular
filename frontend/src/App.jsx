@@ -799,11 +799,12 @@ function App() {
     // Skip files already indexed with the same modifiedTime (no re-download needed)
     const existingMtimes = new Map(
       engine.documents.filter(d => d.driveMtime).map(d => [d.filepath, d.driveMtime])
+      // filepath is now "Google Drive/${file.id}" so this map is keyed by ID — no duplicate collisions
     )
     const newFiles = files.filter(f => {
       if (!ocrEnabled && f.mimeType.startsWith('image/')) return false
       if (!includeShared && f.ownedByMe === false) return false
-      const stored = existingMtimes.get(`Google Drive/${f.name}`)
+      const stored = existingMtimes.get(`Google Drive/${f.id}`)
       return !stored || stored !== f.modifiedTime
     })
     const alreadyIndexed = files.length - newFiles.length
@@ -838,7 +839,7 @@ function App() {
 
       await engine.addDocument({
         filename: file.name,
-        filepath: `Google Drive/${file.name}`,
+        filepath: `Google Drive/${file.id}`,
         content,
         filetype: result.filetype,
         isImage,
