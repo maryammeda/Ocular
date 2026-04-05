@@ -126,55 +126,30 @@ class SearchEngine {
     })
   }
 
-  // Batched writes — collects docs and flushes them in a single transaction every 200ms
-  _writeBatch = []
-  _flushTimer = null
-  _flushPromise = null
-  _flushResolvers = []
+  // Serial write queue — one IDB transaction at a time, handles abort + error
+  _writeQueue = Promise.resolve()
 
-  async _save(doc) {
+  _save(doc) {
+    this._writeQueue = this._writeQueue.then(() => this._writeOne(doc))
+    return this._writeQueue
+  }
+
+  _writeOne(doc) {
     return new Promise((resolve, reject) => {
-      this._writeBatch.push({ doc, resolve, reject })
-      if (!this._flushTimer) {
-        this._flushTimer = setTimeout(() => this._flush(), 200)
+      try {
+        const tx = this._db.transaction(STORE_NAME, 'readwrite')
+        tx.objectStore(STORE_NAME).put(doc)
+        tx.oncomplete = resolve
+        tx.onerror = () => reject(tx.error || new Error('IDB write error'))
+        tx.onabort = () => reject(new Error('IDB transaction aborted'))
+      } catch (e) {
+        reject(e)
       }
     })
   }
 
-  async _flush() {
-    this._flushTimer = null
-    if (!this._writeBatch.length) return
-
-    const batch = this._writeBatch.splice(0)
-    try {
-      const tx = this._db.transaction(STORE_NAME, 'readwrite')
-      const store = tx.objectStore(STORE_NAME)
-      for (const { doc } of batch) {
-        store.put(doc)
-      }
-      await new Promise((resolve, reject) => {
-        tx.oncomplete = resolve
-        tx.onerror = () => reject(tx.error)
-      })
-      for (const { resolve } of batch) resolve()
-    } catch (err) {
-      console.warn('Batch write failed, retrying individually:', err?.message)
-      for (const { doc, resolve, reject } of batch) {
-        try {
-          const tx = this._db.transaction(STORE_NAME, 'readwrite')
-          tx.objectStore(STORE_NAME).put(doc)
-          await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error) })
-          resolve()
-        } catch (e) {
-          reject(e)
-        }
-      }
-    }
-  }
-
   async _flushNow() {
-    if (this._flushTimer) { clearTimeout(this._flushTimer); this._flushTimer = null }
-    await this._flush()
+    await this._writeQueue
   }
 
   // ── Scan a single directory ──────────────────────────────
