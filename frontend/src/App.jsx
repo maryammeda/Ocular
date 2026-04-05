@@ -807,6 +807,8 @@ function App() {
       const stored = existingMtimes.get(`Google Drive/${f.id}`)
       return !stored || stored !== f.modifiedTime
     })
+    // Process owned files first so the user's own content is always indexed first
+    newFiles.sort((a, b) => (b.ownedByMe === true) - (a.ownedByMe === true))
     const alreadyIndexed = files.length - newFiles.length
 
     if (alreadyIndexed > 0) {
