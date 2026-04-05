@@ -856,7 +856,7 @@ function App() {
         while (idx < newFiles.length) {
           const file = newFiles[idx++]
           try {
-            await processFile(file)
+            await withTimeout(processFile(file), 30000)
             count++
           } catch (e) {
             skipped++
