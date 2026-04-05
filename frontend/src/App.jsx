@@ -866,6 +866,7 @@ function App() {
       })
     )
 
+    await engine._flushNow()
     setIndexedCount(engine.count)
     setScanning(false)
     const msg = skipped > 0
