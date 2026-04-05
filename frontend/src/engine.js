@@ -87,15 +87,6 @@ class SearchEngine {
       req.onerror = () => reject(req.error)
     })
     await this._loadAll()
-    // Flush any pending writes before the page unloads
-    window.addEventListener('beforeunload', () => {
-      if (this._writeBatch.length) {
-        const tx = this._db.transaction(STORE_NAME, 'readwrite')
-        const store = tx.objectStore(STORE_NAME)
-        for (const { doc } of this._writeBatch) store.put(doc)
-        this._writeBatch = []
-      }
-    })
   }
 
   async _loadAll() {
