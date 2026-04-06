@@ -853,6 +853,7 @@ function App() {
     // More workers when OCR is off (pure network I/O) vs on (CPU-bound OCR limits gains)
     const CONCURRENCY = ocrEnabled ? 6 : 10
     let idx = 0
+    const failedFiles = []
     await Promise.all(
       Array.from({ length: CONCURRENCY }, async () => {
         while (idx < newFiles.length) {
@@ -861,18 +862,31 @@ function App() {
             await withTimeout(processFile(file), 30000)
             count++
           } catch (e) {
-            skipped++
-            console.warn(`Skipped ${file.name}:`, e?.message)
+            failedFiles.push(file)
           }
           onProgress(count, file.name)
         }
       })
     )
 
+    // Retry failed files one at a time with a longer timeout
+    if (failedFiles.length > 0) {
+      onProgress(count, `Retrying ${failedFiles.length} files...`)
+      for (const file of failedFiles) {
+        try {
+          await withTimeout(processFile(file), 60000)
+          count++
+        } catch (e) {
+          skipped++
+        }
+        onProgress(count, file.name)
+      }
+    }
+
     setIndexedCount(await engine.syncCount())
     setScanning(false)
     const msg = skipped > 0
-      ? `Indexed ${count} files from Google Drive (${skipped} skipped)`
+      ? `Indexed ${count} files from Google Drive (${skipped} couldn't be read)`
       : `Indexed ${count} files from Google Drive`
     notify(msg)
   }
