@@ -816,8 +816,13 @@ function App() {
       onProgress(count, `${alreadyIndexed} files already indexed, processing new ones...`)
     }
 
-    const withTimeout = (promise, ms) =>
-      Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))])
+    const withTimeout = (promise, ms) => {
+      let timer
+      return Promise.race([
+        promise,
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), ms) })
+      ]).finally(() => clearTimeout(timer))
+    }
 
     const processFile = async (file) => {
       const result = await withTimeout(downloadFile(token, file), 15000)
