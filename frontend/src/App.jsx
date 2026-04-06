@@ -971,10 +971,9 @@ function App() {
             <span className="font-heading text-xl text-white tracking-tight">Ocular</span>
           </div>
           <div className="flex items-center gap-6">
-            {['Search', 'Scan', 'Chat'].map(label => (
+            {['Scan', 'Chat'].map(label => (
               <button key={label}
                 onClick={() => {
-                  if (label === 'Search') inputRef.current?.focus()
                   if (label === 'Scan') setScanPanelOpen(true)
                   if (label === 'Chat') setChatOpen(true)
                 }}
