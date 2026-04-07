@@ -874,24 +874,27 @@ function App() {
       })
     )
 
-    // Retry failed files one at a time with a longer timeout
-    if (failedFiles.length > 0) {
+    // Retry failed files — but only if it's a small batch (likely individual file issues).
+    // If many failed, it's probably rate limiting / token expiry — retrying would just waste time.
+    if (failedFiles.length > 0 && failedFiles.length <= 30) {
       onProgress(count, `Retrying ${failedFiles.length} files...`)
       for (const file of failedFiles) {
         try {
-          await withTimeout(processFile(file), 60000)
+          await withTimeout(processFile(file), 30000)
           count++
         } catch (e) {
           skipped++
         }
         onProgress(count, file.name)
       }
+    } else {
+      skipped = failedFiles.length
     }
 
     setIndexedCount(await engine.syncCount())
     setScanning(false)
     const msg = skipped > 0
-      ? `Indexed ${count} files from Google Drive (${skipped} couldn't be read)`
+      ? `Indexed ${count} files from Google Drive — run again to get the remaining ${skipped}`
       : `Indexed ${count} files from Google Drive`
     notify(msg)
   }
