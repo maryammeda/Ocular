@@ -63,13 +63,15 @@ function Toast({ message, type, onClose }) {
   )
 }
 
-// ── Scan Overlay (blocking — for local folder scans) ──────
-function ScanOverlay({ label, fileCount, currentFile, isOcr }) {
+// ── Scan Overlay ───────────────────────────────────────────
+function ScanOverlay({ label, fileCount, totalFiles, currentFile, isOcr, statusMsg }) {
+  const pct = totalFiles > 0 ? Math.round((fileCount / totalFiles) * 100) : 0
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-40 bg-black/80 backdrop-blur-2xl flex items-center justify-center">
       <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        className="flex flex-col items-center gap-8">
+        className="flex flex-col items-center gap-8 w-80">
+        {/* Orbital spinner */}
         <div className="relative w-16 h-16">
           <motion.svg viewBox="0 0 48 48" className="absolute inset-0 w-full h-full"
             animate={{ rotate: 360 }} transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}>
@@ -84,54 +86,28 @@ function ScanOverlay({ label, fileCount, currentFile, isOcr }) {
               strokeDasharray="20 80" strokeLinecap="round" />
           </motion.svg>
         </div>
-        <div className="text-center">
+        <div className="text-center w-full">
           <p className="text-white text-lg" style={{ fontWeight: 400 }}>{label}</p>
           <motion.p className="text-white/40 text-sm mt-2" style={{ fontWeight: 300 }}
             animate={{ opacity: [0.3, 0.7, 0.3] }} transition={{ duration: 2, repeat: Infinity }}>
-            {isOcr ? 'Running OCR on images...' : 'Crawling and indexing files...'}
+            {statusMsg || (isOcr ? 'Running OCR on images...' : 'Crawling and indexing files...')}
           </motion.p>
-          {fileCount > 0 && <p className="text-white/25 text-xs mt-4 font-mono">{fileCount} files indexed</p>}
-          {currentFile && <p className="text-white/15 text-[10px] mt-1 font-mono truncate max-w-[300px]">{currentFile}</p>}
+          {totalFiles > 0 ? (
+            <div className="mt-5 space-y-2">
+              <div className="w-full h-1 rounded-full bg-white/10 overflow-hidden">
+                <motion.div className="h-full rounded-full bg-white/50"
+                  animate={{ width: `${pct}%` }} transition={{ duration: 0.3 }} />
+              </div>
+              <p className="text-white/30 text-xs font-mono">{fileCount.toLocaleString()} of {totalFiles.toLocaleString()} files</p>
+            </div>
+          ) : fileCount > 0 ? (
+            <p className="text-white/25 text-xs mt-4 font-mono">{fileCount} files indexed</p>
+          ) : null}
+          {currentFile && (
+            <p className="text-white/15 text-[10px] mt-2 font-mono truncate max-w-[300px] mx-auto">{currentFile}</p>
+          )}
         </div>
       </motion.div>
-    </motion.div>
-  )
-}
-
-// ── Drive Progress Bar (non-blocking — bottom of screen) ──
-function DriveProgressBar({ fileCount, totalFiles, statusMsg }) {
-  const pct = totalFiles > 0 ? Math.round((fileCount / totalFiles) * 100) : 0
-  return (
-    <motion.div
-      initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }}
-      transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-80"
-      style={{
-        background: 'rgba(10,10,10,0.9)',
-        backdropFilter: 'blur(40px)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: '16px',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-      }}
-    >
-      <div className="px-4 py-3.5 space-y-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Loader2 size={12} className="text-white/50 animate-spin" />
-            <span className="text-[11px] text-white/60" style={{ fontWeight: 400 }}>
-              {statusMsg || 'Indexing Google Drive'}
-            </span>
-          </div>
-          <span className="text-[11px] text-white/30 font-mono">{pct}%</span>
-        </div>
-        <div className="w-full h-1 rounded-full bg-white/10 overflow-hidden">
-          <motion.div className="h-full rounded-full bg-white/40"
-            animate={{ width: `${pct}%` }} transition={{ duration: 0.4 }} />
-        </div>
-        <p className="text-[10px] text-white/25 font-mono">
-          {fileCount.toLocaleString()} of {totalFiles.toLocaleString()} files
-        </p>
-      </div>
     </motion.div>
   )
 }
@@ -716,11 +692,9 @@ function App() {
   const [scanning, setScanning] = useState(false)
   const [scanLabel, setScanLabel] = useState('')
   const [scanCount, setScanCount] = useState(0)
+  const [scanTotal, setScanTotal] = useState(0)
   const [scanFile, setScanFile] = useState('')
-  const [driveIndexing, setDriveIndexing] = useState(false)
-  const [driveCount, setDriveCount] = useState(0)
-  const [driveTotal, setDriveTotal] = useState(0)
-  const [driveStatus, setDriveStatus] = useState('')
+  const [scanStatus, setScanStatus] = useState('')
   const [toast, setToast] = useState(null)
   const [hasSearched, setHasSearched] = useState(false)
   const [activeFilter, setActiveFilter] = useState('all')
@@ -816,7 +790,7 @@ function App() {
     if (!supportsFS) return notify('Please use Chrome or Edge to scan folders.', 'error')
     try {
       const dirHandle = await window.showDirectoryPicker({ mode: 'read' })
-      setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false); setScanLabel(`Scanning ${dirHandle.name}`)
+      setScanning(true); setScanCount(0); setScanTotal(0); setScanFile(''); setIsOcr(false); setScanStatus(''); setScanLabel(`Scanning ${dirHandle.name}`)
       const count = await engine.scanDirectory(dirHandle, onProgress, { ocrEnabled })
       setIndexedCount(await engine.syncCount())
       notify(`Done — ${count} files indexed from ${dirHandle.name}`)
@@ -825,11 +799,16 @@ function App() {
     } finally { setScanning(false) }
   }
 
-  // ── Google Drive shared processing (non-blocking) ───────
+  // ── Google Drive shared processing ──────────────────────
   const processDriveFiles = async (token, files, label) => {
+    setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false)
+    setScanStatus('')
+    setScanLabel(label)
+
     let count = 0
     let skipped = 0
 
+    // Skip files already indexed with the same modifiedTime
     const existingMtimes = new Map(
       engine.documents.filter(d => d.driveMtime).map(d => [d.filepath, d.driveMtime])
     )
@@ -841,12 +820,11 @@ function App() {
     })
     newFiles.sort((a, b) => (b.ownedByMe === true) - (a.ownedByMe === true))
     const alreadyIndexed = files.length - newFiles.length
-    if (alreadyIndexed > 0) count = alreadyIndexed
+    const totalToProcess = newFiles.length
 
-    setDriveTotal(alreadyIndexed + newFiles.length)
-    setDriveCount(count)
-    setDriveStatus('')
-    setDriveIndexing(true)
+    if (alreadyIndexed > 0) count = alreadyIndexed
+    setScanTotal(alreadyIndexed + totalToProcess)
+    setScanCount(count)
 
     const withTimeout = (promise, ms) => {
       let timer
@@ -889,7 +867,7 @@ function App() {
 
     const delay = (ms) => new Promise(r => setTimeout(r, ms))
 
-    // Phase 1: Fast parallel
+    // Phase 1: Fast parallel processing
     const CONCURRENCY = ocrEnabled ? 6 : 10
     let idx = 0
     let consecutiveFails = 0
@@ -906,18 +884,20 @@ function App() {
             failedFiles.push(file)
             consecutiveFails++
           }
-          setDriveCount(count)
+          setScanCount(count)
+          setScanFile(file.name)
         }
       })
     )
+    // Collect any unprocessed files from rate limit cutoff
     while (idx < newFiles.length) failedFiles.push(newFiles[idx++])
 
-    // Phase 2: Cooldown + sequential retry
+    // Phase 2: Slow sequential retry with cooldown — handles rate limits gracefully
     if (failedFiles.length > 0) {
-      setDriveStatus('Pausing briefly...')
+      setScanStatus('Rate limited — pausing before retrying...')
       await delay(30000)
 
-      setDriveStatus('Finishing up...')
+      setScanStatus('Resuming remaining files...')
       for (const file of failedFiles) {
         try {
           await withTimeout(processFile(file), 20000)
@@ -926,19 +906,23 @@ function App() {
         } catch (e) {
           consecutiveFails++
           skipped++
+          // If still rate limited, pause again
           if (consecutiveFails >= 5) {
-            setDriveStatus('Pausing briefly...')
+            setScanStatus('Still rate limited — pausing again...')
             await delay(30000)
-            setDriveStatus('Finishing up...')
+            setScanStatus('Resuming...')
             consecutiveFails = 0
           }
         }
-        setDriveCount(count)
+        setScanCount(count)
+        setScanFile(file.name)
       }
     }
 
-    setDriveIndexing(false)
+    setScanStatus('')
+    setScanTotal(0)
     setIndexedCount(await engine.syncCount())
+    setScanning(false)
     const msg = skipped > 0
       ? `Indexed ${count} files from Google Drive (${skipped} couldn't be read)`
       : `Indexed ${count} files from Google Drive`
@@ -967,13 +951,13 @@ function App() {
     setShowFullDriveSetup(false)
     try {
       const token = await authorize(userClientId.trim())
-      notify('Fetching file list from Google Drive...')
+      setScanLabel('Fetching files from Google Drive')
+      setScanning(true); setScanCount(0); setScanTotal(0); setScanFile(''); setIsOcr(false); setScanStatus('')
       const files = await listFiles(token)
-      setScanPanelOpen(false)
       await processDriveFiles(token, files, `Indexing ${files.length} files from Google Drive`)
     } catch (e) {
       if (!e.message?.includes('popup_closed')) notify(e.message, 'error')
-      setDriveIndexing(false)
+      setScanning(false)
     }
   }
 
@@ -986,7 +970,7 @@ function App() {
     e.preventDefault(); dragCounter.current = 0; setDragging(false)
     const items = [...e.dataTransfer.items]
     if (!items.length) return
-    setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false); setScanLabel('Scanning dropped files')
+    setScanning(true); setScanCount(0); setScanTotal(0); setScanFile(''); setIsOcr(false); setScanStatus(''); setScanLabel('Scanning dropped files')
     try {
       const count = await engine.scanDroppedItems(items, onProgress, { ocrEnabled })
       setIndexedCount(await engine.syncCount())
@@ -1365,8 +1349,7 @@ function App() {
       </AnimatePresence>
 
       {/* ── OVERLAYS ──────────────────────────────────────── */}
-      <AnimatePresence>{scanning && <ScanOverlay label={scanLabel} fileCount={scanCount} currentFile={scanFile} isOcr={isOcr} />}</AnimatePresence>
-      <AnimatePresence>{driveIndexing && <DriveProgressBar fileCount={driveCount} totalFiles={driveTotal} statusMsg={driveStatus} />}</AnimatePresence>
+      <AnimatePresence>{scanning && <ScanOverlay label={scanLabel} fileCount={scanCount} totalFiles={scanTotal} currentFile={scanFile} isOcr={isOcr} statusMsg={scanStatus} />}</AnimatePresence>
 
       {/* Drag & drop overlay */}
       <AnimatePresence>
