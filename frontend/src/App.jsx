@@ -902,19 +902,15 @@ function App() {
     const CONCURRENCY = ocrEnabled ? 6 : 10
     let idx = 0
     let processed = alreadyIndexed
-    let consecutiveFails = 0
     await Promise.all(
       Array.from({ length: CONCURRENCY }, async () => {
         while (idx < newFiles.length) {
           const file = newFiles[idx++]
-          const timeout = consecutiveFails >= 5 ? 3000 : 30000
           try {
-            await withTimeout(processFile(file), timeout)
+            await withTimeout(processFile(file), 30000)
             count++
-            consecutiveFails = 0
           } catch (e) {
             skipped++
-            consecutiveFails++
           }
           processed++
           setDriveCount(processed)
