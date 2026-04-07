@@ -801,7 +801,7 @@ function App() {
 
   // ── Google Drive shared processing ──────────────────────
   const processDriveFiles = async (token, files, label) => {
-    setScanning(true); setScanCount(0); setScanFile(''); setIsOcr(false)
+    setScanCount(0); setScanFile(''); setIsOcr(false)
     setScanStatus('')
     setScanLabel(label)
 
@@ -898,6 +898,8 @@ function App() {
     if (!GOOGLE_API_KEY) return notify('Picker API key not configured yet.', 'error')
     try {
       const { token, files } = await pickFiles(GOOGLE_CLIENT_ID, GOOGLE_API_KEY)
+      setScanTotal(files.length)
+      setScanning(true); setScanLabel(`Indexing ${files.length} selected files`)
       await processDriveFiles(token, files, `Indexing ${files.length} selected files`)
     } catch (e) {
       if (!e.message?.includes('popup_closed')) notify(e.message, 'error')
@@ -915,9 +917,12 @@ function App() {
     setShowFullDriveSetup(false)
     try {
       const token = await authorize(userClientId.trim())
-      setScanLabel('Fetching files from Google Drive')
-      setScanning(true); setScanCount(0); setScanTotal(0); setScanFile(''); setIsOcr(false); setScanStatus('')
+      setScanLabel('Fetching file list from Google Drive...')
+      setScanStatus(''); setScanCount(0); setScanTotal(0); setScanFile(''); setIsOcr(false)
+      setScanning(true)
       const files = await listFiles(token)
+      setScanLabel(`Indexing ${files.length} files from Google Drive`)
+      setScanTotal(files.length)
       await processDriveFiles(token, files, `Indexing ${files.length} files from Google Drive`)
     } catch (e) {
       if (!e.message?.includes('popup_closed')) notify(e.message, 'error')
