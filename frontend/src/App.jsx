@@ -867,17 +867,24 @@ function App() {
 
     const CONCURRENCY = ocrEnabled ? 6 : 10
     let idx = 0
+    let processed = alreadyIndexed
+    let consecutiveFails = 0
     await Promise.all(
       Array.from({ length: CONCURRENCY }, async () => {
         while (idx < newFiles.length) {
           const file = newFiles[idx++]
+          // After consecutive failures (rate limit), use short timeout — 429s return instantly
+          const timeout = consecutiveFails >= 5 ? 3000 : 30000
           try {
-            await withTimeout(processFile(file), 30000)
+            await withTimeout(processFile(file), timeout)
             count++
+            consecutiveFails = 0
           } catch (e) {
             skipped++
+            consecutiveFails++
           }
-          setScanCount(count)
+          processed++
+          setScanCount(processed)
           setScanFile(file.name)
         }
       })
