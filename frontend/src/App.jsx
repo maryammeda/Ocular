@@ -865,59 +865,23 @@ function App() {
       })
     }
 
-    const delay = (ms) => new Promise(r => setTimeout(r, ms))
-
-    // Phase 1: Fast parallel processing
     const CONCURRENCY = ocrEnabled ? 6 : 10
     let idx = 0
-    let consecutiveFails = 0
-    const failedFiles = []
     await Promise.all(
       Array.from({ length: CONCURRENCY }, async () => {
-        while (idx < newFiles.length && consecutiveFails < 20) {
+        while (idx < newFiles.length) {
           const file = newFiles[idx++]
           try {
-            await withTimeout(processFile(file), 15000)
+            await withTimeout(processFile(file), 30000)
             count++
-            consecutiveFails = 0
           } catch (e) {
-            failedFiles.push(file)
-            consecutiveFails++
+            skipped++
           }
           setScanCount(count)
           setScanFile(file.name)
         }
       })
     )
-    // Collect any unprocessed files from rate limit cutoff
-    while (idx < newFiles.length) failedFiles.push(newFiles[idx++])
-
-    // Phase 2: Slow sequential retry with cooldown — handles rate limits gracefully
-    if (failedFiles.length > 0) {
-      setScanStatus('Rate limited — pausing before retrying...')
-      await delay(30000)
-
-      setScanStatus('Resuming remaining files...')
-      for (const file of failedFiles) {
-        try {
-          await withTimeout(processFile(file), 20000)
-          count++
-          consecutiveFails = 0
-        } catch (e) {
-          consecutiveFails++
-          skipped++
-          // If still rate limited, pause again
-          if (consecutiveFails >= 5) {
-            setScanStatus('Still rate limited — pausing again...')
-            await delay(30000)
-            setScanStatus('Resuming...')
-            consecutiveFails = 0
-          }
-        }
-        setScanCount(count)
-        setScanFile(file.name)
-      }
-    }
 
     setScanStatus('')
     setScanTotal(0)
