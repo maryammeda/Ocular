@@ -868,6 +868,8 @@ function App() {
       ]).finally(() => clearTimeout(timer))
     }
 
+    const delay = (ms) => new Promise(r => setTimeout(r, ms))
+
     const processFile = async (file) => {
       const result = await withTimeout(downloadFile(token, file), 15000)
       let content = ''
@@ -899,6 +901,19 @@ function App() {
       })
     }
 
+    // Process a single file with up to 3 retries and exponential backoff
+    const processWithRetry = async (file) => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await processFile(file)
+          return true
+        } catch (e) {
+          if (attempt < 2) await delay(2000 * (attempt + 1))
+        }
+      }
+      return false
+    }
+
     const CONCURRENCY = ocrEnabled ? 6 : 10
     let idx = 0
     let processed = alreadyIndexed
@@ -906,10 +921,9 @@ function App() {
       Array.from({ length: CONCURRENCY }, async () => {
         while (idx < newFiles.length) {
           const file = newFiles[idx++]
-          try {
-            await withTimeout(processFile(file), 30000)
+          if (await processWithRetry(file)) {
             count++
-          } catch (e) {
+          } else {
             skipped++
           }
           processed++
