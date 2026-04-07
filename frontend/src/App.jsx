@@ -858,45 +858,47 @@ function App() {
     // More workers when OCR is off (pure network I/O) vs on (CPU-bound OCR limits gains)
     const CONCURRENCY = ocrEnabled ? 6 : 10
     let idx = 0
+    let consecutiveFails = 0
     const failedFiles = []
     await Promise.all(
       Array.from({ length: CONCURRENCY }, async () => {
-        while (idx < newFiles.length) {
+        while (idx < newFiles.length && consecutiveFails < 30) {
           const file = newFiles[idx++]
           try {
-            await withTimeout(processFile(file), 30000)
+            await withTimeout(processFile(file), 15000)
             count++
+            consecutiveFails = 0
           } catch (e) {
             failedFiles.push(file)
+            consecutiveFails++
           }
           onProgress(count, file.name)
         }
+        // If rate limited, collect remaining unprocessed files
+        while (idx < newFiles.length) failedFiles.push(newFiles[idx++])
       })
     )
 
-    // Retry failed files — but only if it's a small batch (likely individual file issues).
-    // If many failed, it's probably rate limiting / token expiry — retrying would just waste time.
-    if (failedFiles.length > 0 && failedFiles.length <= 30) {
-      onProgress(count, `Retrying ${failedFiles.length} files...`)
-      for (const file of failedFiles) {
-        try {
-          await withTimeout(processFile(file), 30000)
-          count++
-        } catch (e) {
-          skipped++
-        }
-        onProgress(count, file.name)
-      }
-    } else {
-      skipped = failedFiles.length
-    }
-
+    // Finish the scan immediately — user sees their results right away
     setIndexedCount(await engine.syncCount())
     setScanning(false)
-    const msg = skipped > 0
-      ? `Indexed ${count} files from Google Drive — run again to get the remaining ${skipped}`
-      : `Indexed ${count} files from Google Drive`
-    notify(msg)
+    if (failedFiles.length > 0) {
+      notify(`Indexed ${count} files — finishing remaining ${failedFiles.length} in background`)
+    } else {
+      notify(`Indexed ${count} files from Google Drive`)
+    }
+
+    // Background retry: wait for rate limit to reset, then quietly index the rest
+    if (failedFiles.length > 0) {
+      setTimeout(async () => {
+        for (const file of failedFiles) {
+          try {
+            await withTimeout(processFile(file), 20000)
+          } catch (e) { /* skip silently */ }
+        }
+        setIndexedCount(await engine.syncCount())
+      }, 45000)
+    }
   }
 
   const handleQuickScan = async () => {
