@@ -756,6 +756,7 @@ function App() {
   const [snapCount, setSnapCount] = useState(0)
   const [showFullDriveSetup, setShowFullDriveSetup] = useState(false)
   const [userClientId, setUserClientId] = useState(() => localStorage.getItem('ocular_user_gdrive_client_id') || '')
+  const [ocrProgress, setOcrProgress] = useState(null) // { done, total, file } or null
   const inputRef = useRef(null)
   const historyRef = useRef(null)
   const dragCounter = useRef(0)
@@ -835,12 +836,30 @@ function App() {
     try {
       const dirHandle = await window.showDirectoryPicker({ mode: 'read' })
       setScanning(true); setScanCount(0); setScanTotal(0); setScanFile(''); setIsOcr(false); setScanStatus(''); setScanLabel(`Scanning ${dirHandle.name}`)
-      const count = await engine.scanDirectory(dirHandle, onProgress, { ocrEnabled })
-      setIndexedCount(await engine.syncCount())
-      notify(`Done — ${count} files indexed from ${dirHandle.name}`)
+
+      const onOcrProgress = (done, total, file) => {
+        setOcrProgress({ done, total, file })
+        setIndexedCount(engine.count)
+      }
+
+      const { textCount, imageCount, ocrPromise } = await engine.scanDirectory(dirHandle, onProgress, { ocrEnabled, onOcrProgress })
+      setScanning(false)
+      setIndexedCount(engine.count)
+      notify(`Indexed ${textCount} files from ${dirHandle.name}` + (imageCount > 0 ? ` — OCR running on ${imageCount} images in background` : ''))
+
+      // OCR runs in background — user can search/chat freely
+      if (imageCount > 0) {
+        setOcrProgress({ done: 0, total: imageCount, file: '' })
+        ocrPromise.then(async (ocrCount) => {
+          setOcrProgress(null)
+          setIndexedCount(await engine.syncCount())
+          if (ocrCount > 0) notify(`OCR complete — ${ocrCount} images indexed`)
+        }).catch(() => setOcrProgress(null))
+      }
     } catch (e) {
       if (e.name !== 'AbortError') notify(e.message, 'error')
-    } finally { setScanning(false) }
+      setScanning(false)
+    }
   }
 
   // ── Google Drive shared processing ──────────────────────
@@ -1368,6 +1387,25 @@ function App() {
       {/* ── OVERLAYS ──────────────────────────────────────── */}
       <AnimatePresence>{scanning && <ScanOverlay label={scanLabel} fileCount={scanCount} totalFiles={scanTotal} currentFile={scanFile} isOcr={isOcr} statusMsg={scanStatus} />}</AnimatePresence>
       <AnimatePresence>{driveIndexing && <DriveProgressBar fileCount={driveCount} totalFiles={driveTotal} />}</AnimatePresence>
+
+      {/* Background OCR progress — non-blocking, user can search/chat */}
+      <AnimatePresence>
+        {ocrProgress && (
+          <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
+            className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 px-4 py-2.5 rounded-xl"
+            style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <Loader2 size={14} className="text-white/40 animate-spin shrink-0" />
+            <span className="text-white/50 text-xs" style={{ fontWeight: 300 }}>
+              OCR: {ocrProgress.done}/{ocrProgress.total} images
+            </span>
+            <div className="w-24 h-1 rounded-full bg-white/10 overflow-hidden">
+              <motion.div className="h-full rounded-full bg-white/30"
+                animate={{ width: `${ocrProgress.total > 0 ? Math.round((ocrProgress.done / ocrProgress.total) * 100) : 0}%` }}
+                transition={{ duration: 0.3 }} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Drag & drop overlay */}
       <AnimatePresence>
