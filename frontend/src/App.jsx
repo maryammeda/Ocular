@@ -1272,8 +1272,8 @@ function App() {
             </p>
             <div className="flex items-center gap-6">
               {[
-                { label: 'Privacy', href: 'https://ocular-app.tech/privacy.html' },
-                { label: 'Terms', href: 'https://ocular-app.tech/terms.html' },
+                { label: 'Privacy', href: '/privacy.html' },
+                { label: 'Terms', href: '/terms.html' },
                 { label: 'GitHub', href: 'https://github.com/maryammeda/Ocular' },
               ].map(link => (
                 <a key={link.label} href={link.href} target="_blank" rel="noopener noreferrer"
