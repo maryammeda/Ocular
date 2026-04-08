@@ -1,4 +1,5 @@
 import os
+import logging
 import time
 import threading
 from watchdog.observers import Observer
@@ -6,6 +7,8 @@ from watchdog.events import FileSystemEventHandler
 
 from backend.crawler import FileCrawler
 from backend.db import DocumentDB
+
+log = logging.getLogger("ocular.watcher")
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".png", ".jpg", ".jpeg"}
 IGNORED_DIRS = {".git", ".vscode", ".idea", "node_modules", "venv", "__pycache__", "AppData"}
@@ -42,9 +45,9 @@ class _IndexHandler(FileSystemEventHandler):
         crawler.deep_scan = True
         result = crawler._process_file(filepath)
         if result:
-            print(f"[watcher] Re-indexed: {filename}")
+            log.info("Re-indexed: %s", filename)
         else:
-            print(f"[watcher] Skipped: {filename}")
+            log.debug("Skipped: %s", filename)
 
     def _handle_event(self, filepath):
         """Debounce rapid events on the same file (e.g. save triggers multiple writes)."""
@@ -58,7 +61,7 @@ class _IndexHandler(FileSystemEventHandler):
         try:
             self._reindex(filepath)
         except Exception as e:
-            print(f"[watcher] Error re-indexing {filepath}: {e}")
+            log.error("Error re-indexing %s: %s", filepath, e)
 
     def on_created(self, event):
         if not event.is_directory and self._should_handle(event.src_path):
@@ -75,9 +78,9 @@ class _IndexHandler(FileSystemEventHandler):
                 db = DocumentDB()
                 db.delete_document(filepath)  # removes from documents + file_cache
                 db.close()
-                print(f"[watcher] Removed from index: {os.path.basename(filepath)}")
+                log.info("Removed from index: %s", os.path.basename(filepath))
             except Exception as e:
-                print(f"[watcher] Error removing {filepath}: {e}")
+                log.error("Error removing %s: %s", filepath, e)
 
 
 class FileWatcher:
@@ -94,7 +97,7 @@ class FileWatcher:
             return False  # already watching
         watch = self._observer.schedule(self._handler, path, recursive=True)
         self._watched[path] = watch
-        print(f"[watcher] Now watching: {path}")
+        log.info("Now watching: %s", path)
         return True
 
     def unwatch(self, path):
@@ -102,7 +105,7 @@ class FileWatcher:
         watch = self._watched.pop(path, None)
         if watch:
             self._observer.unschedule(watch)
-            print(f"[watcher] Stopped watching: {path}")
+            log.info("Stopped watching: %s", path)
             return True
         return False
 
@@ -112,9 +115,9 @@ class FileWatcher:
     def start(self):
         if not self._observer.is_alive():
             self._observer.start()
-            print("[watcher] File watcher started")
+            log.info("File watcher started")
 
     def stop(self):
         self._observer.stop()
         self._observer.join()
-        print("[watcher] File watcher stopped")
+        log.info("File watcher stopped")

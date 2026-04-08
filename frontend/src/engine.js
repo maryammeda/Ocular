@@ -13,6 +13,9 @@ const IGNORED_DIRS = new Set([
 
 const DB_NAME = 'ocular_index'
 const STORE_NAME = 'documents'
+const MAX_CLIENT_FILE_SIZE = 50 * 1024 * 1024
+const IDB_BATCH_SIZE = 25      // Flush to IndexedDB every N docs
+const CONCURRENT_FILES = 6     // Non-OCR files processed in parallel
 
 // ── PDF extraction (lazy-loaded) ──────────────────────────
 let _pdfjsLib = null
@@ -72,6 +75,7 @@ function scheduleOcrCleanup() {
 // ── Engine ────────────────────────────────────────────────
 class SearchEngine {
   documents = []
+  _docMap = new Map()  // id -> index in documents[] for O(1) lookups
   _db = null
 
   async init() {
@@ -105,6 +109,25 @@ class SearchEngine {
       }
       return doc
     })
+    this._rebuildMap()
+  }
+
+  _rebuildMap() {
+    this._docMap.clear()
+    for (let i = 0; i < this.documents.length; i++) {
+      this._docMap.set(this.documents[i].id, i)
+    }
+  }
+
+  _upsertMem(doc) {
+    const memDoc = doc.imageData ? { ...doc, imageData: null } : doc
+    const idx = this._docMap.get(memDoc.id)
+    if (idx !== undefined) {
+      this.documents[idx] = memDoc
+    } else {
+      this._docMap.set(memDoc.id, this.documents.length)
+      this.documents.push(memDoc)
+    }
   }
 
   async getImageData(filepath) {
@@ -117,97 +140,125 @@ class SearchEngine {
     })
   }
 
-  // Serial write queue — one IDB transaction at a time, handles abort + error
-  _writeQueue = Promise.resolve()
+  // ── Batched IndexedDB writes ─────────────────────────────
+  _writeBatch = []
+  _batchPromise = null
 
-  _save(doc) {
-    const result = this._writeQueue.then(() => this._writeOne(doc))
-    // Queue must continue even if this write fails — catch keeps the chain alive
-    this._writeQueue = result.catch(() => {})
-    return result
+  _queueWrite(doc) {
+    this._writeBatch.push(doc)
+    if (this._writeBatch.length >= IDB_BATCH_SIZE) {
+      return this._flushBatch()
+    }
+    return Promise.resolve()
   }
 
-  _writeOne(doc) {
-    return new Promise((resolve, reject) => {
-      try {
-        const tx = this._db.transaction(STORE_NAME, 'readwrite')
-        tx.objectStore(STORE_NAME).put(doc)
-        tx.oncomplete = resolve
-        tx.onerror = () => reject(tx.error || new Error('IDB write error'))
-        tx.onabort = () => reject(new Error('IDB transaction aborted'))
-      } catch (e) {
-        reject(e)
-      }
-    })
+  _flushBatch() {
+    if (this._writeBatch.length === 0) return Promise.resolve()
+    const batch = this._writeBatch.splice(0)
+    const chain = (this._batchPromise || Promise.resolve()).then(() =>
+      new Promise((resolve, reject) => {
+        try {
+          const tx = this._db.transaction(STORE_NAME, 'readwrite')
+          const store = tx.objectStore(STORE_NAME)
+          for (const doc of batch) store.put(doc)
+          tx.oncomplete = resolve
+          tx.onerror = () => reject(tx.error || new Error('IDB batch write error'))
+          tx.onabort = () => reject(new Error('IDB transaction aborted'))
+        } catch (e) { reject(e) }
+      })
+    ).catch(e => console.error('IDB batch write failed:', e))
+    this._batchPromise = chain
+    return chain
   }
 
-  async _flushNow() {
-    await this._writeQueue
+  async _flushAll() {
+    await this._flushBatch()
+    await this._batchPromise
   }
 
   // ── Scan a single directory ──────────────────────────────
   async scanDirectory(dirHandle, onProgress, { ocrEnabled = true } = {}) {
     let count = 0
 
-    const walk = async (handle, pathPrefix) => {
+    // Collect all files first, then process in phases
+    const textFiles = []
+    const imageFiles = []
+
+    const collectFiles = async (handle, pathPrefix) => {
       for await (const entry of handle.values()) {
         if (entry.kind === 'directory') {
           if (IGNORED_DIRS.has(entry.name)) continue
-          await walk(entry, `${pathPrefix}/${entry.name}`)
+          await collectFiles(entry, `${pathPrefix}/${entry.name}`)
         } else {
           const dotIdx = entry.name.lastIndexOf('.')
           if (dotIdx === -1) continue
           const ext = entry.name.slice(dotIdx).toLowerCase()
           const type = SUPPORTED[ext]
           if (!type) continue
-
-          try {
-            const file = await entry.getFile()
-            const isImage = type === 'image'
-            let content = ''
-            let imageData = null
-
-            if (isImage) {
-              if (!ocrEnabled) continue
-              if (file.size < 5 * 1024 || file.size > 5 * 1024 * 1024) continue
-              imageData = await fileToDataURL(file)
-              onProgress?.(count, entry.name, true)
-              const scheduler = await getOcrScheduler()
-              const { data } = await scheduler.addJob('recognize', file)
-              content = data.text?.trim() || ''
-            } else {
-              content = await this._extractContent(file, type)
-            }
-
-            const filepath = `${pathPrefix}/${entry.name}`
-            const doc = {
-              id: filepath,
-              filename: entry.name,
-              filepath,
-              content: content || '',
-              filetype: ext.replace('.', '').toUpperCase(),
-              isImage,
-              imageData,
-            }
-
-            await this._save(doc)
-            // Free imageData from RAM after persisting to IndexedDB
-            const memDoc = doc.imageData ? { ...doc, imageData: null } : doc
-            const idx = this.documents.findIndex(d => d.id === memDoc.id)
-            if (idx >= 0) this.documents[idx] = memDoc
-            else this.documents.push(memDoc)
-
-            count++
-            onProgress?.(count, entry.name, false)
-          } catch (e) {
-            console.warn(`Skipped ${entry.name}:`, e.message)
+          if (type === 'image') {
+            if (ocrEnabled) imageFiles.push({ entry, ext, type, pathPrefix })
+          } else {
+            textFiles.push({ entry, ext, type, pathPrefix })
           }
         }
       }
     }
 
-    await walk(dirHandle, dirHandle.name)
-    await this._flushNow()
+    await collectFiles(dirHandle, dirHandle.name)
+
+    // Phase 1: Text files — process concurrently in batches
+    for (let i = 0; i < textFiles.length; i += CONCURRENT_FILES) {
+      const chunk = textFiles.slice(i, i + CONCURRENT_FILES)
+      const results = await Promise.allSettled(
+        chunk.map(async ({ entry, ext, type, pathPrefix }) => {
+          const file = await entry.getFile()
+          if (file.size > MAX_CLIENT_FILE_SIZE) return null
+          const content = await this._extractContent(file, type)
+          const filepath = `${pathPrefix}/${entry.name}`
+          return {
+            id: filepath, filename: entry.name, filepath,
+            content: content || '', filetype: ext.replace('.', '').toUpperCase(),
+            isImage: false, imageData: null,
+          }
+        })
+      )
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value) {
+          await this._queueWrite(r.value)
+          this._upsertMem(r.value)
+          count++
+          onProgress?.(count, r.value.filename, false)
+        }
+      }
+    }
+
+    // Phase 2: Images — OCR one at a time (CPU-bound, sequential to avoid lag)
+    for (const { entry, ext, pathPrefix } of imageFiles) {
+      try {
+        const file = await entry.getFile()
+        if (file.size > MAX_CLIENT_FILE_SIZE) continue
+        if (file.size < 5 * 1024 || file.size > 5 * 1024 * 1024) continue
+        const imageData = await fileToDataURL(file)
+        onProgress?.(count, entry.name, true)
+        const scheduler = await getOcrScheduler()
+        const { data } = await scheduler.addJob('recognize', file)
+        const content = data.text?.trim() || ''
+        const filepath = `${pathPrefix}/${entry.name}`
+        const doc = {
+          id: filepath, filename: entry.name, filepath,
+          content, filetype: ext.replace('.', '').toUpperCase(),
+          isImage: true, imageData,
+        }
+        await this._queueWrite(doc)
+        this._upsertMem(doc)
+        count++
+        onProgress?.(count, entry.name, false)
+      } catch (e) {
+        console.warn(`Skipped ${entry.name}:`, e.message)
+      }
+    }
+
+    await this._flushAll()
     scheduleOcrCleanup()
     return count
   }
@@ -351,22 +402,23 @@ class SearchEngine {
 
   // ── Preview ──────────────────────────────────────────────
   getDocument(filepath) {
-    return this.documents.find(d => d.id === filepath) || null
+    const idx = this._docMap.get(filepath)
+    return idx !== undefined ? this.documents[idx] : null
   }
 
   get count() {
     return this.documents.length
   }
 
-  // Reload from IDB and return the true persisted count — use after scans to get ground truth
   async syncCount() {
-    await this._flushNow()
+    await this._flushAll()
     await this._loadAll()
     return this.documents.length
   }
 
   async clearAll() {
     this.documents = []
+    this._docMap.clear()
     const tx = this._db.transaction(STORE_NAME, 'readwrite')
     tx.objectStore(STORE_NAME).clear()
     await new Promise(r => { tx.oncomplete = r })
@@ -375,21 +427,12 @@ class SearchEngine {
   // ── Public methods for external integrations ─────────────
   async addDocument({ filename, filepath, content, filetype, isImage = false, imageData = null, driveMtime = null }) {
     const doc = {
-      id: filepath,
-      filename,
-      filepath,
-      content: content || '',
-      filetype,
-      isImage,
-      imageData,
-      driveMtime,
+      id: filepath, filename, filepath,
+      content: content || '', filetype,
+      isImage, imageData, driveMtime,
     }
-    await this._save(doc)
-    // Free imageData from RAM after persisting to IndexedDB
-    const memDoc = doc.imageData ? { ...doc, imageData: null } : doc
-    const idx = this.documents.findIndex(d => d.id === memDoc.id)
-    if (idx >= 0) this.documents[idx] = memDoc
-    else this.documents.push(memDoc)
+    await this._queueWrite(doc)
+    this._upsertMem(doc)
   }
 
   async ocrFromDataURL(dataUrl) {
@@ -442,6 +485,7 @@ class SearchEngine {
           if (!type) continue
 
           const file = await handle.getFile()
+          if (file.size > MAX_CLIENT_FILE_SIZE) continue
           const isImage = type === 'image'
           let content = ''
           let imageData = null
@@ -464,12 +508,8 @@ class SearchEngine {
             isImage, imageData,
           }
 
-          await this._save(doc)
-          // Free imageData from RAM after persisting to IndexedDB
-          const memDoc = doc.imageData ? { ...doc, imageData: null } : doc
-          const idx = this.documents.findIndex(d => d.id === memDoc.id)
-          if (idx >= 0) this.documents[idx] = memDoc
-          else this.documents.push(memDoc)
+          await this._queueWrite(doc)
+          this._upsertMem(doc)
           count++
           onProgress?.(count, handle.name, false)
         }
@@ -477,7 +517,7 @@ class SearchEngine {
         console.warn('Drop item skipped:', e.message)
       }
     }
-    await this._flushNow()
+    await this._flushAll()
     scheduleOcrCleanup()
     return count
   }

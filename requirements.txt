@@ -1,12 +1,10 @@
-streamlit
-streamlit-lottie
 pytesseract
-pdfplumber
+PyMuPDF
 python-docx
 Pillow
 watchdog
 fastapi
 uvicorn
 pydantic
-google-genai
+httpx
 python-dotenv

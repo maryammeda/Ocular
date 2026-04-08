@@ -1,38 +1,23 @@
 import os
 import json
+import time
 from typing import Optional
 
-SYSTEM_PROMPT = """You are Ocular AI, a sharp and reliable assistant that answers questions \
-using ONLY the document excerpts provided below.
+import httpx
 
-Rules:
-- Base every answer strictly on the sources. Do not use outside knowledge.
-- Cite sources inline like [filename.ext] immediately after the relevant fact.
-- If the sources do not contain enough information, say so directly — never guess.
-- Lead with the direct answer, then supporting detail.
-- Use bullet points or numbered lists when listing multiple items.
-- Keep answers concise and well-formatted using markdown.
-"""
+from backend.prompts import SYSTEM_PROMPT
 
-# Module-level singleton — created once, reused across all requests
-_gemini_client = None
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+MODEL = "llama-3.3-70b-versatile"
 
 
-def _get_client():
-    global _gemini_client
-    if _gemini_client is None:
-        from google import genai
-        api_key = os.getenv("GEMINI_API_KEY", "").strip()
-        _gemini_client = genai.Client(api_key=api_key)
-    return _gemini_client
+def _sse(event, data):
+    """Format a Server-Sent Event line."""
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
 def _score_client_sources(question: str, sources: list, top_n: int = 5) -> list:
-    """Rank client-sent sources by simple keyword relevance to the question.
-
-    This filters the potentially hundreds of IndexedDB docs down to the most
-    relevant handful before they're sent to Gemini.
-    """
+    """Rank client-sent sources by simple keyword relevance to the question."""
     words = [w.lower() for w in question.split() if len(w) > 3]
     if not words:
         return sources[:top_n]
@@ -53,30 +38,24 @@ def build_prompt(question: str, sources: list) -> str:
         context_parts.append(f"--- Source {i}: {src['filename']} ---\n{content}\n")
     context_block = "\n".join(context_parts)
     return (
-        f"{SYSTEM_PROMPT}\n\n"
-        f"== DOCUMENT SOURCES ==\n{context_block}== END SOURCES ==\n\n"
+        f"== DOCUMENT SOURCES ==\n{context_block}"
+        f"== END SOURCES ==\n\n"
         f"User question: {question}"
     )
 
 
-def stream_response(question: str, client_sources: Optional[list] = None):
-    """Generator yielding SSE events: sources → tokens → done/error.
+def stream_response(question: str, client_sources: Optional[list] = None, history: Optional[list] = None):
+    """Generator yielding SSE events: sources -> tokens -> done/error.
 
     Retrieval strategy (fastest path first):
-    1. Server-side FTS5 search on the question → top 8 results from SQLite.
+    1. Server-side FTS5 search on the question -> top 8 results from SQLite.
     2. From any client-sent sources (Google Drive / browser scan), score by
-       keyword relevance → top 5.
+       keyword relevance -> top 5.
     3. Merge both lists (server docs first), deduplicate by filepath, cap at 10.
-
-    This means the AI only ever sees the most relevant documents, regardless
-    of how many files are indexed.
     """
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    api_key = os.getenv("GROQ_API_KEY", "").strip()
     if not api_key:
-        yield (
-            f"event: error\ndata: {json.dumps({'message': 'Ocular AI is not configured. "
-            f"Add GEMINI_API_KEY to your .env file.'})}\n\n"
-        )
+        yield _sse("error", {"message": "Ocular AI is not configured. Add GROQ_API_KEY to your .env file."})
         return
 
     # 1. Server-side retrieval
@@ -102,37 +81,84 @@ def stream_response(question: str, client_sources: Optional[list] = None):
             merged.append(doc)
             seen_paths.add(doc["filepath"])
 
-    sources = merged[:10]  # hard cap — keeps the prompt tight
+    sources = merged[:10]
 
     if not sources:
-        yield (
-            f"event: error\ndata: {json.dumps({'message': 'No relevant documents found. "
-            f"Try indexing some files first.'})}\n\n"
-        )
+        yield _sse("error", {"message": "No relevant documents found. Try indexing some files first."})
         return
 
     # Send source metadata to the frontend before streaming begins
     source_meta = [{"filename": s["filename"], "filepath": s["filepath"]} for s in sources]
-    yield f"event: sources\ndata: {json.dumps(source_meta)}\n\n"
+    yield _sse("sources", source_meta)
 
-    prompt = build_prompt(question, sources)
+    user_content = build_prompt(question, sources)
+
+    # Build message thread: system -> past exchanges -> current question
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": user_content})
 
     try:
-        client = _get_client()
-        response = client.models.generate_content_stream(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
-        for chunk in response:
-            if chunk.text:
-                yield f"event: token\ndata: {json.dumps({'text': chunk.text})}\n\n"
-        yield "event: done\ndata: {}\n\n"
+        for attempt in range(3):
+            with httpx.stream(
+                "POST",
+                GROQ_URL,
+                json={
+                    "model": MODEL,
+                    "stream": True,
+                    "messages": messages,
+                },
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=30.0,
+            ) as response:
+                if response.status_code == 429 and attempt < 2:
+                    response.read()
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                if response.status_code != 200:
+                    response.read()
+                    yield _sse("error", {"message": f"API error: {response.status_code}"})
+                    return
+
+                tokens_received = 0
+                for line in response.iter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[6:]
+                    if data.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                        if chunk.get("error"):
+                            err = chunk["error"]
+                            err_msg = err.get("message") or str(err)
+                            yield _sse("error", {"message": err_msg})
+                            return
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        text = delta.get("content", "")
+                        if text:
+                            tokens_received += 1
+                            yield _sse("token", {"text": text})
+                    except (json.JSONDecodeError, IndexError, KeyError):
+                        continue
+
+                if tokens_received == 0:
+                    yield _sse("error", {"message": "The AI returned an empty response. The model may be overloaded — try again in a moment."})
+                    return
+
+                yield _sse("done", {})
+                return
+
+        yield _sse("error", {"message": "Rate limited. Please wait a moment and try again."})
 
     except Exception as e:
         error_msg = str(e)
         if "429" in error_msg or "quota" in error_msg.lower():
-            error_msg = "Rate limited by Gemini API. Please wait a moment and try again."
-        # Reset the singleton so it's recreated cleanly on the next call
-        global _gemini_client
-        _gemini_client = None
-        yield f"event: error\ndata: {json.dumps({'message': error_msg})}\n\n"
+            error_msg = "Rate limited. Please wait a moment and try again."
+        elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+            error_msg = "The AI took too long to respond. Try asking a shorter question or try again."
+        yield _sse("error", {"message": error_msg})
