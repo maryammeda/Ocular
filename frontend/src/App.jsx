@@ -1507,7 +1507,7 @@ function App() {
                       <li>Select <span className="text-white/50">External</span> user type, click <span className="text-white/50">Create</span></li>
                       <li><span className="text-white/50">App information</span>: enter any app name (e.g. "Ocular"), select your email as the <span className="text-white/50">User support email</span>, and enter your email again under <span className="text-white/50">Developer contact information</span> at the bottom</li>
                       <li>Click <span className="text-white/50">Save and Continue</span></li>
-                      <li><span className="text-white/50">Scopes</span>: click <span className="text-white/50">Add or Remove Scopes</span>, search for <span className="text-white/50">Google Drive API</span>, check the box for <code className="text-white/50 bg-white/[0.04] px-1 rounded">.../auth/drive.readonly</code>, click <span className="text-white/50">Update</span>, then <span className="text-white/50">Save and Continue</span></li>
+                      <li><span className="text-white/50">Scopes</span>: skip this page — click <span className="text-white/50">Save and Continue</span></li>
                       <li><span className="text-white/50">Test users</span>: click <span className="text-white/50">+ Add Users</span>, enter your own Gmail address, click <span className="text-white/50">Add</span>, then <span className="text-white/50">Save and Continue</span></li>
                       <li>Review the summary and click <span className="text-white/50">Back to Dashboard</span></li>
                     </ul>
