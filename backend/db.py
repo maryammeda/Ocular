@@ -25,8 +25,8 @@ def _sanitize_fts_query(question: str) -> str:
     clean = re.sub(r"[^\w\s]", " ", question.lower())
     words = [w for w in clean.split() if w not in STOP_WORDS and len(w) > 2]
     if not words:
-        # Fall back to treating the whole question as a phrase
-        return f'"{question}"'
+        # Fall back to treating the cleaned question as a phrase
+        return f'"{clean}"'
     # FTS5 OR query: match documents containing any of the key terms
     return " OR ".join(f'"{w}"' for w in words[:10])
 

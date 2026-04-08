@@ -379,7 +379,7 @@ class SearchEngine {
   _snippet(content, query) {
     if (!content) return ''
     const idx = content.toLowerCase().indexOf(query.toLowerCase())
-    if (idx === -1) return content.slice(0, 200)
+    if (idx === -1) return _escHtml(content.slice(0, 200))
 
     const start = Math.max(0, idx - 80)
     const end = Math.min(content.length, idx + query.length + 80)
@@ -387,6 +387,8 @@ class SearchEngine {
     if (start > 0) s = '...' + s
     if (end < content.length) s += '...'
 
+    // Escape HTML entities BEFORE injecting <b> tags to prevent XSS
+    s = _escHtml(s)
     const esc = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     return s.replace(new RegExp(esc, 'gi'), '<b>$&</b>')
   }
@@ -567,6 +569,10 @@ class SearchEngine {
     scheduleOcrCleanup()
     return count
   }
+}
+
+function _escHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 function fileToDataURL(file) {

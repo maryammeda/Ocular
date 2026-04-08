@@ -380,11 +380,16 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
     saveTimer.current = setTimeout(() => saveAllChats(updated), 500)
   }, [messages])
 
-  // Flush pending save on unmount
+  // Flush pending save on unmount + tab close
   useEffect(() => {
-    return () => {
+    const flushSave = () => {
       clearTimeout(saveTimer.current)
       if (latestChats.current) saveAllChats(latestChats.current)
+    }
+    window.addEventListener('beforeunload', flushSave)
+    return () => {
+      window.removeEventListener('beforeunload', flushSave)
+      flushSave()
     }
   }, [])
 
@@ -1299,7 +1304,7 @@ function App() {
             <motion.div
               initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-              className="fixed top-0 right-0 bottom-0 z-50 w-96 flex flex-col"
+              className="fixed top-0 right-0 bottom-0 z-50 w-full sm:w-96 flex flex-col"
               style={{
                 background: 'linear-gradient(180deg, rgba(8,8,8,0.98), rgba(0,0,0,0.99))',
                 backdropFilter: 'blur(60px)',
@@ -1320,7 +1325,7 @@ function App() {
                   <motion.button key={title}
                     whileHover={{ scale: 1.02 }}
                     onClick={action}
-                    disabled={scanning}
+                    disabled={scanning || driveIndexing}
                     className="w-full liquid-glass rounded-2xl p-5 text-left group transition-all disabled:opacity-30"
                   >
                     <div className="flex items-center gap-4">
