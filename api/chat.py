@@ -7,9 +7,19 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-# Allow imports from project root (Vercel deploys from repo root)
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from backend.prompts import SYSTEM_PROMPT
+# Import shared prompt — with fallback for Vercel serverless
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    from backend.prompts import SYSTEM_PROMPT
+except ImportError:
+    # Fallback: read directly from file (Vercel deploys full repo)
+    _prompt_path = os.path.join(os.path.dirname(__file__), "..", "backend", "prompts.py")
+    if os.path.exists(_prompt_path):
+        _ns = {}
+        exec(open(_prompt_path).read(), _ns)
+        SYSTEM_PROMPT = _ns["SYSTEM_PROMPT"]
+    else:
+        SYSTEM_PROMPT = "You are Ocular AI, a personal document assistant. Answer based solely on the provided sources. Cite filenames like [filename.ext]. Keep answers concise using markdown."
 
 app = FastAPI()
 
