@@ -835,30 +835,47 @@ function App() {
     if (!supportsFS) return notify('Please use Chrome or Edge to scan folders.', 'error')
     try {
       const dirHandle = await window.showDirectoryPicker({ mode: 'read' })
-      setScanning(true); setScanCount(0); setScanTotal(0); setScanFile(''); setIsOcr(false); setScanStatus(''); setScanLabel(`Scanning ${dirHandle.name}`)
 
+      // No blocking overlay — use bottom progress bar immediately
+      setOcrProgress({ done: 0, total: 0, file: '', label: `Indexing ${dirHandle.name}...` })
+
+      const onTextProgress = (count, filename) => {
+        setOcrProgress(prev => prev ? { ...prev, done: count, file: filename } : null)
+        setIndexedCount(engine.count)
+      }
       const onOcrProgress = (done, total, file) => {
-        setOcrProgress({ done, total, file })
+        setOcrProgress({ done, total, file, label: 'OCR' })
         setIndexedCount(engine.count)
       }
 
-      const { textCount, imageCount, ocrPromise } = await engine.scanDirectory(dirHandle, onProgress, { ocrEnabled, onOcrProgress })
-      setScanning(false)
-      setIndexedCount(engine.count)
-      notify(`Indexed ${textCount} files from ${dirHandle.name}` + (imageCount > 0 ? ` — OCR running on ${imageCount} images in background` : ''))
+      const { textCount, imageCount, skippedCount, ocrPromise } = await engine.scanDirectory(
+        dirHandle, onTextProgress, { ocrEnabled, onOcrProgress }
+      )
 
-      // OCR runs in background — user can search/chat freely
+      setIndexedCount(engine.count)
+
       if (imageCount > 0) {
-        setOcrProgress({ done: 0, total: imageCount, file: '' })
+        // Text done — update bar to show OCR phase
+        setOcrProgress({ done: 0, total: imageCount, file: '', label: 'OCR' })
+        const msg = textCount > 0
+          ? `${textCount} files indexed${skippedCount > 0 ? `, ${skippedCount} unchanged` : ''} — OCR running on ${imageCount} images`
+          : skippedCount > 0 ? `${skippedCount} files unchanged — OCR running on ${imageCount} images` : `OCR running on ${imageCount} images`
+        notify(msg)
         ocrPromise.then(async (ocrCount) => {
           setOcrProgress(null)
           setIndexedCount(await engine.syncCount())
           if (ocrCount > 0) notify(`OCR complete — ${ocrCount} images indexed`)
         }).catch(() => setOcrProgress(null))
+      } else {
+        setOcrProgress(null)
+        const msg = textCount > 0
+          ? `${textCount} files indexed from ${dirHandle.name}${skippedCount > 0 ? ` (${skippedCount} unchanged)` : ''}`
+          : skippedCount > 0 ? `All ${skippedCount} files already up to date` : 'No supported files found'
+        notify(msg)
       }
     } catch (e) {
+      setOcrProgress(null)
       if (e.name !== 'AbortError') notify(e.message, 'error')
-      setScanning(false)
     }
   }
 
@@ -1388,7 +1405,7 @@ function App() {
       <AnimatePresence>{scanning && <ScanOverlay label={scanLabel} fileCount={scanCount} totalFiles={scanTotal} currentFile={scanFile} isOcr={isOcr} statusMsg={scanStatus} />}</AnimatePresence>
       <AnimatePresence>{driveIndexing && <DriveProgressBar fileCount={driveCount} totalFiles={driveTotal} />}</AnimatePresence>
 
-      {/* Background OCR progress — non-blocking, user can search/chat */}
+      {/* Non-blocking progress — user can search/chat while indexing */}
       <AnimatePresence>
         {ocrProgress && (
           <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
@@ -1396,13 +1413,20 @@ function App() {
             style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <Loader2 size={14} className="text-white/40 animate-spin shrink-0" />
             <span className="text-white/50 text-xs" style={{ fontWeight: 300 }}>
-              OCR: {ocrProgress.done}/{ocrProgress.total} images
+              {ocrProgress.label === 'OCR'
+                ? `OCR: ${ocrProgress.done}/${ocrProgress.total} images`
+                : ocrProgress.label || `Indexing: ${ocrProgress.done} files`}
             </span>
-            <div className="w-24 h-1 rounded-full bg-white/10 overflow-hidden">
-              <motion.div className="h-full rounded-full bg-white/30"
-                animate={{ width: `${ocrProgress.total > 0 ? Math.round((ocrProgress.done / ocrProgress.total) * 100) : 0}%` }}
-                transition={{ duration: 0.3 }} />
-            </div>
+            {ocrProgress.total > 0 && (
+              <div className="w-24 h-1 rounded-full bg-white/10 overflow-hidden">
+                <motion.div className="h-full rounded-full bg-white/30"
+                  animate={{ width: `${Math.round((ocrProgress.done / ocrProgress.total) * 100)}%` }}
+                  transition={{ duration: 0.3 }} />
+              </div>
+            )}
+            {ocrProgress.file && (
+              <span className="text-white/20 text-[10px] font-mono truncate max-w-[120px]">{ocrProgress.file}</span>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
