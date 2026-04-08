@@ -75,12 +75,12 @@ function scheduleOcrCleanup() {
 // ── Engine ────────────────────────────────────────────────
 class SearchEngine {
   documents = []
-  _docMap = new Map()
+  _docMap = new Map()  // id -> index for O(1) lookups
   _db = null
 
   async init() {
     this._db = await new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 1)
+      const req = indexedDB.open(DB_NAME, 2) // bumped version for lastModified field
       req.onupgradeneeded = (e) => {
         const db = e.target.result
         if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -129,6 +129,13 @@ class SearchEngine {
     }
   }
 
+  // Check if a file is already indexed with the same mtime (skip unchanged)
+  _isUnchanged(filepath, lastModified) {
+    const idx = this._docMap.get(filepath)
+    if (idx === undefined) return false
+    return this.documents[idx].lastModified === lastModified
+  }
+
   async getImageData(filepath) {
     const tx = this._db.transaction(STORE_NAME, 'readonly')
     const store = tx.objectStore(STORE_NAME)
@@ -175,72 +182,85 @@ class SearchEngine {
     await this._batchPromise
   }
 
-  // ── Scan a single directory ──────────────────────────────
-  // Returns { textCount, imageCount, ocrPromise }
-  // Text files are indexed immediately. OCR runs in background via ocrPromise.
-  // onOcrProgress(done, total, filename) is called as each image completes.
+  // ── Scan a single directory (fully streaming, non-blocking) ──
+  // Processes files AS they are discovered — no collect-then-process.
+  // Returns { textCount, imageCount, ocrPromise, skippedCount }
+  // onProgress(indexed, filename) fires after each file is searchable.
+  // onOcrProgress(done, total, filename) fires as background OCR progresses.
   async scanDirectory(dirHandle, onProgress, { ocrEnabled = true, onOcrProgress } = {}) {
     let textCount = 0
+    let skippedCount = 0
+    const imageQueue = []
 
-    // Collect all files first
-    const textFiles = []
-    const imageFiles = []
+    // Buffer for concurrent text processing
+    let textBuffer = []
 
-    const collectFiles = async (handle, pathPrefix) => {
+    const flushTextBuffer = async () => {
+      if (textBuffer.length === 0) return
+      const batch = textBuffer.splice(0)
+      const results = await Promise.allSettled(
+        batch.map(async ({ entry, ext, type, pathPrefix }) => {
+          const file = await entry.getFile()
+          if (file.size > MAX_CLIENT_FILE_SIZE) return null
+          const filepath = `${pathPrefix}/${entry.name}`
+          // Skip unchanged files
+          if (this._isUnchanged(filepath, file.lastModified)) return 'unchanged'
+          const content = await this._extractContent(file, type)
+          return {
+            id: filepath, filename: entry.name, filepath,
+            content: content || '', filetype: ext.replace('.', '').toUpperCase(),
+            isImage: false, imageData: null, lastModified: file.lastModified,
+          }
+        })
+      )
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value === 'unchanged') {
+          skippedCount++
+        } else if (r.status === 'fulfilled' && r.value) {
+          await this._queueWrite(r.value)
+          this._upsertMem(r.value)
+          textCount++
+          onProgress?.(textCount, r.value.filename)
+        }
+      }
+    }
+
+    // Walk and process simultaneously — files are processed as discovered
+    const walk = async (handle, pathPrefix) => {
       for await (const entry of handle.values()) {
         if (entry.kind === 'directory') {
           if (IGNORED_DIRS.has(entry.name)) continue
-          await collectFiles(entry, `${pathPrefix}/${entry.name}`)
+          await walk(entry, `${pathPrefix}/${entry.name}`)
         } else {
           const dotIdx = entry.name.lastIndexOf('.')
           if (dotIdx === -1) continue
           const ext = entry.name.slice(dotIdx).toLowerCase()
           const type = SUPPORTED[ext]
           if (!type) continue
+
           if (type === 'image') {
-            if (ocrEnabled) imageFiles.push({ entry, ext, type, pathPrefix })
+            if (ocrEnabled) imageQueue.push({ entry, ext, pathPrefix })
           } else {
-            textFiles.push({ entry, ext, type, pathPrefix })
+            textBuffer.push({ entry, ext, type, pathPrefix })
+            // Flush when buffer is full — processes concurrently while walk continues
+            if (textBuffer.length >= CONCURRENT_FILES) {
+              await flushTextBuffer()
+            }
           }
         }
       }
     }
 
-    await collectFiles(dirHandle, dirHandle.name)
-
-    // Phase 1: Text files — fast, concurrent, blocking (user waits for this)
-    for (let i = 0; i < textFiles.length; i += CONCURRENT_FILES) {
-      const chunk = textFiles.slice(i, i + CONCURRENT_FILES)
-      const results = await Promise.allSettled(
-        chunk.map(async ({ entry, ext, type, pathPrefix }) => {
-          const file = await entry.getFile()
-          if (file.size > MAX_CLIENT_FILE_SIZE) return null
-          const content = await this._extractContent(file, type)
-          const filepath = `${pathPrefix}/${entry.name}`
-          return {
-            id: filepath, filename: entry.name, filepath,
-            content: content || '', filetype: ext.replace('.', '').toUpperCase(),
-            isImage: false, imageData: null,
-          }
-        })
-      )
-      for (const r of results) {
-        if (r.status === 'fulfilled' && r.value) {
-          await this._queueWrite(r.value)
-          this._upsertMem(r.value)
-          textCount++
-          onProgress?.(textCount, r.value.filename, false)
-        }
-      }
-    }
+    await walk(dirHandle, dirHandle.name)
+    await flushTextBuffer()  // Process any remaining text files
     await this._flushAll()
 
-    // Phase 2: OCR — runs in background, doesn't block the user
-    const ocrPromise = imageFiles.length > 0
-      ? this._processImagesBackground(imageFiles, onOcrProgress)
+    // Background OCR — doesn't block
+    const ocrPromise = imageQueue.length > 0
+      ? this._processImagesBackground(imageQueue, onOcrProgress)
       : Promise.resolve(0)
 
-    return { textCount, imageCount: imageFiles.length, ocrPromise }
+    return { textCount, imageCount: imageQueue.length, skippedCount, ocrPromise }
   }
 
   async _processImagesBackground(imageFiles, onOcrProgress) {
@@ -253,15 +273,18 @@ class SearchEngine {
         if (file.size > MAX_CLIENT_FILE_SIZE) { done++; continue }
         if (file.size < 5 * 1024 || file.size > 5 * 1024 * 1024) { done++; continue }
 
+        const filepath = `${pathPrefix}/${entry.name}`
+        // Skip unchanged images too
+        if (this._isUnchanged(filepath, file.lastModified)) { done++; onOcrProgress?.(done, total, entry.name); continue }
+
         const imageData = await fileToDataURL(file)
         const scheduler = await getOcrScheduler()
         const { data } = await scheduler.addJob('recognize', file)
         const content = data.text?.trim() || ''
-        const filepath = `${pathPrefix}/${entry.name}`
         const doc = {
           id: filepath, filename: entry.name, filepath,
           content, filetype: ext.replace('.', '').toUpperCase(),
-          isImage: true, imageData,
+          isImage: true, imageData, lastModified: file.lastModified,
         }
         await this._queueWrite(doc)
         this._upsertMem(doc)
@@ -308,7 +331,8 @@ class SearchEngine {
     const data = new Uint8Array(await file.arrayBuffer())
     const pdf = await pdfjsLib.getDocument({ data }).promise
     const pages = []
-    for (let i = 1; i <= pdf.numPages; i++) {
+    const maxPages = Math.min(pdf.numPages, 50)
+    for (let i = 1; i <= maxPages; i++) {
       const page = await pdf.getPage(i)
       const tc = await page.getTextContent()
       pages.push(tc.items.map(it => it.str).join(' '))
@@ -484,19 +508,18 @@ class SearchEngine {
   // ── Process dropped items (files & folders) ──────────────
   async scanDroppedItems(items, onProgress, { ocrEnabled = true, onOcrProgress } = {}) {
     let count = 0
-    let allImageFiles = []
 
     for (const item of items) {
       try {
         const handle = await item.getAsFileSystemHandle()
         if (!handle) continue
         if (handle.kind === 'directory') {
-          const { textCount, imageCount, ocrPromise } = await this.scanDirectory(handle, (c, f, isOcr) => {
-            onProgress?.(count + c, f, isOcr)
+          const { textCount, ocrPromise } = await this.scanDirectory(handle, (c, f) => {
+            onProgress?.(count + c, f)
           }, { ocrEnabled, onOcrProgress })
           count += textCount
-          // Collect the ocrPromise — we'll handle it at the caller level
-          if (imageCount > 0) await ocrPromise
+          // For drops, wait for OCR too since it's usually a small selection
+          await ocrPromise
         } else {
           const dotIdx = handle.name.lastIndexOf('.')
           if (dotIdx === -1) continue
@@ -511,7 +534,6 @@ class SearchEngine {
             if (!ocrEnabled) continue
             if (file.size < 5 * 1024 || file.size > 5 * 1024 * 1024) continue
             const imageData = await fileToDataURL(file)
-            onProgress?.(count, handle.name, true)
             const scheduler = await getOcrScheduler()
             const { data } = await scheduler.addJob('recognize', file)
             const content = data.text?.trim() || ''
@@ -519,25 +541,23 @@ class SearchEngine {
             const doc = {
               id: filepath, filename: handle.name, filepath,
               content, filetype: ext.replace('.', '').toUpperCase(),
-              isImage: true, imageData,
+              isImage: true, imageData, lastModified: file.lastModified,
             }
             await this._queueWrite(doc)
             this._upsertMem(doc)
-            count++
-            onProgress?.(count, handle.name, false)
           } else {
             const content = await this._extractContent(file, type)
             const filepath = `dropped/${handle.name}`
             const doc = {
               id: filepath, filename: handle.name, filepath,
               content: content || '', filetype: ext.replace('.', '').toUpperCase(),
-              isImage: false, imageData: null,
+              isImage: false, imageData: null, lastModified: file.lastModified,
             }
             await this._queueWrite(doc)
             this._upsertMem(doc)
-            count++
-            onProgress?.(count, handle.name, false)
           }
+          count++
+          onProgress?.(count, handle.name)
         }
       } catch (e) {
         console.warn('Drop item skipped:', e.message)
