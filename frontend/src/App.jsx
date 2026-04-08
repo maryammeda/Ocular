@@ -393,8 +393,16 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
     }
   }, [])
 
+  // Start a fresh chat each time the panel is opened (without persisting empty chats)
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 300)
+    if (open) {
+      const fresh = { id: generateId(), messages: [], created: Date.now() }
+      setActiveChat(fresh)
+      setActiveId(fresh.id)
+      setMessages([])
+      setShowHistory(false)
+      setTimeout(() => inputRef.current?.focus(), 300)
+    }
   }, [open])
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -433,7 +441,7 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
     }
   }
 
-  // Auto-create a chat if none exists when sending first message
+  // Ensure the active chat is persisted in the chat list (adds it on first message)
   const ensureActiveChat = () => {
     if (!activeChat) {
       const chat = { id: generateId(), messages: [], created: Date.now() }
@@ -443,6 +451,12 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
       setActiveChat(chat)
       setActiveId(chat.id)
       return chat
+    }
+    // If active chat isn't in the list yet (fresh session chat), add it now
+    if (!chats.find(c => c.id === activeChat.id)) {
+      const updated = [activeChat, ...chats]
+      setChats(updated)
+      saveAllChats(updated)
     }
     return activeChat
   }
