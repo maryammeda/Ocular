@@ -1496,32 +1496,30 @@ function App() {
                 <button onClick={() => setShowFullDriveSetup(false)} className="text-white/30 hover:text-white/60 transition"><X size={18} /></button>
               </div>
               <div className="text-white/40 text-[13px] space-y-3 mb-6 leading-relaxed overflow-y-auto max-h-[60vh]" style={{ fontWeight: 300 }}>
-                <p className="text-white/60">To scan your entire Google Drive, you need your own Google Cloud credentials. Follow these steps exactly:</p>
+                <p className="text-white/60">To scan your entire Google Drive, you need your own Google Cloud credentials. It takes about 2 minutes:</p>
                 <ol className="list-decimal list-inside space-y-3 text-white/40">
-                  <li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-white/60 underline underline-offset-2">Google Cloud Console</a> and sign in with your Google account</li>
-                  <li>Click the project dropdown at the top left and select <span className="text-white/60">New Project</span>. Give it any name (e.g. "Ocular") and click <span className="text-white/60">Create</span></li>
-                  <li>Make sure your new project is selected in the top dropdown</li>
-                  <li>Go to <a href="https://console.cloud.google.com/apis/library/drive.googleapis.com" target="_blank" rel="noopener noreferrer" className="text-white/60 underline underline-offset-2">APIs &amp; Services &gt; Library</a>, search for <span className="text-white/60">Google Drive API</span>, click it, and click <span className="text-white/60">Enable</span></li>
-                  <li>Set up the <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noopener noreferrer" className="text-white/60 underline underline-offset-2">OAuth consent screen</a> (required before creating credentials):
+                  <li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-white/60 underline underline-offset-2">Google Cloud Console</a> and sign in</li>
+                  <li>Click the project dropdown at the top left, select <span className="text-white/60">New Project</span>, name it anything (e.g. "Ocular"), and click <span className="text-white/60">Create</span></li>
+                  <li>Make sure your new project is selected, then go to <a href="https://console.cloud.google.com/apis/library/drive.googleapis.com" target="_blank" rel="noopener noreferrer" className="text-white/60 underline underline-offset-2">APIs &amp; Services &gt; Library</a>, search for <span className="text-white/60">Google Drive API</span>, and click <span className="text-white/60">Enable</span></li>
+                  <li>Go to <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noopener noreferrer" className="text-white/60 underline underline-offset-2">APIs &amp; Services &gt; OAuth consent screen</a> and fill it out:
                     <ul className="list-disc list-inside ml-4 mt-1 space-y-1 text-white/30">
-                      <li>Select <span className="text-white/50">External</span> user type, click <span className="text-white/50">Create</span></li>
-                      <li><span className="text-white/50">App information</span>: enter any app name (e.g. "Ocular"), select your email as the <span className="text-white/50">User support email</span>, and enter your email again under <span className="text-white/50">Developer contact information</span> at the bottom</li>
+                      <li>Select <span className="text-white/50">External</span>, click <span className="text-white/50">Create</span></li>
+                      <li>Enter any app name, select your email for both <span className="text-white/50">User support email</span> and <span className="text-white/50">Developer contact</span></li>
                       <li>Click <span className="text-white/50">Save and Continue</span></li>
-                      <li><span className="text-white/50">Scopes</span>: skip this page — click <span className="text-white/50">Save and Continue</span></li>
-                      <li><span className="text-white/50">Test users</span>: click <span className="text-white/50">+ Add Users</span>, enter your own Gmail address, click <span className="text-white/50">Add</span>, then <span className="text-white/50">Save and Continue</span></li>
-                      <li>Review the summary and click <span className="text-white/50">Back to Dashboard</span></li>
+                      <li><span className="text-white/50">Scopes</span>: skip — click <span className="text-white/50">Save and Continue</span></li>
+                      <li><span className="text-white/50">Test users</span>: click <span className="text-white/50">+ Add Users</span>, add your own Gmail, then <span className="text-white/50">Save and Continue</span></li>
                     </ul>
                   </li>
-                  <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-white/60 underline underline-offset-2">APIs &amp; Services &gt; Credentials</a>:
+                  <li>After finishing the consent screen, it will prompt you to create a client ID:
                     <ul className="list-disc list-inside ml-4 mt-1 space-y-1 text-white/30">
-                      <li>Click <span className="text-white/50">+ Create Credentials</span> at the top, then select <span className="text-white/50">OAuth client ID</span></li>
-                      <li>Application type: select <span className="text-white/50">Web application</span></li>
-                      <li>Give it any name</li>
+                      <li>Application type: <span className="text-white/50">Web application</span></li>
+                      <li>Name: anything</li>
                       <li>Under <span className="text-white/50">Authorized JavaScript origins</span>, click <span className="text-white/50">+ Add URI</span> and enter: <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded">{typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173'}</code></li>
+                      <li>Leave <span className="text-white/50">Authorized redirect URIs</span> empty</li>
                       <li>Click <span className="text-white/50">Create</span></li>
                     </ul>
                   </li>
-                  <li>A popup will show your credentials. Copy the <span className="text-white/60">Client ID</span> (the long string ending in <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded">.apps.googleusercontent.com</code>) and paste it below</li>
+                  <li>Copy the <span className="text-white/60">Client ID</span> (ends in <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded">.apps.googleusercontent.com</code>) and paste it below</li>
                 </ol>
                 <p className="text-white/25 text-[11px] mt-3">Your Client ID stays in your browser only and is never sent to any server.</p>
               </div>
