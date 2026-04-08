@@ -4,10 +4,31 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ocular</title>
+    <title>Ocular — AI-Powered Personal Search Engine</title>
+    <meta name="description" content="Ocular is a local search engine that looks inside your files. Search PDFs, images, screenshots, and Google Drive documents using OCR and AI — your data never leaves your machine." />
+    <meta property="og:title" content="Ocular — AI-Powered Personal Search Engine" />
+    <meta property="og:description" content="Search inside your files, not just filenames. OCR for images, AI chat for document Q&A. Free, open source, and privacy-first." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://ocular-app.tech" />
+    <style>
+      body { margin: 0; background: #000; color: #fff; font-family: system-ui, sans-serif; }
+      .noscript { display: flex; align-items: center; justify-content: center; min-height: 100vh; text-align: center; padding: 2rem; }
+      .noscript h1 { font-size: 1.5rem; font-weight: 400; margin-bottom: 0.5rem; }
+      .noscript p { color: rgba(255,255,255,0.5); font-size: 0.9rem; max-width: 400px; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <noscript>
+        <div class="noscript">
+          <div>
+            <h1>Ocular</h1>
+            <p>AI-powered personal search engine. Search inside your PDFs, images, screenshots, and Google Drive documents — your data never leaves your machine.</p>
+            <p>Please enable JavaScript to use Ocular.</p>
+          </div>
+        </div>
+      </noscript>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
