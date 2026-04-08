@@ -1,7 +1,10 @@
 import os
 import re
+import logging
 import sqlite3
 from datetime import datetime
+
+log = logging.getLogger("ocular.db")
 
 STOP_WORDS = {
     "what", "is", "the", "a", "an", "are", "was", "were", "be", "been", "being",
@@ -36,7 +39,7 @@ class DocumentDB:
             self.cursor = self.conn.cursor()
             self._create_tables()
         except sqlite3.Error as e:
-            print(f"Database connection error: {e}")
+            log.error("Database connection error: %s", e)
             raise
 
     def _create_tables(self):
@@ -54,7 +57,7 @@ class DocumentDB:
             """)
             self.conn.commit()
         except sqlite3.Error as e:
-            print(f"Table creation error: {e}")
+            log.error("Table creation error: %s", e)
             raise
 
     # ------------------------------------------------------------------ #
@@ -75,21 +78,30 @@ class DocumentDB:
 
     def upsert_cache(self, filepath: str, mtime: float):
         """Record the mtime of a successfully indexed file."""
+        self.upsert_cache_no_commit(filepath, mtime)
+        self.conn.commit()
+
+    def upsert_cache_no_commit(self, filepath: str, mtime: float):
+        """Record mtime without committing (for batch writes)."""
         try:
             filepath = os.path.normpath(filepath)
             self.cursor.execute(
                 "INSERT OR REPLACE INTO file_cache (filepath, last_modified) VALUES (?, ?)",
                 (filepath, mtime),
             )
-            self.conn.commit()
         except sqlite3.Error as e:
-            print(f"Cache update error: {e}")
+            log.error("Cache update error: %s", e)
 
     # ------------------------------------------------------------------ #
     # CRUD                                                                 #
     # ------------------------------------------------------------------ #
 
     def add_document(self, filename, filepath, content, filetype):
+        self.add_document_no_commit(filename, filepath, content, filetype)
+        self.conn.commit()
+
+    def add_document_no_commit(self, filename, filepath, content, filetype):
+        """Insert/replace a document without committing (for batch writes)."""
         try:
             filepath = os.path.normpath(filepath)
             self.cursor.execute(
@@ -101,9 +113,8 @@ class DocumentDB:
                 "VALUES (?, ?, ?, ?, ?)",
                 (filename, filepath, content, filetype, created_at),
             )
-            self.conn.commit()
         except sqlite3.Error as e:
-            print(f"Insert error: {e}")
+            log.error("Insert error: %s", e)
             raise
 
     def delete_document(self, filepath: str):
@@ -114,7 +125,7 @@ class DocumentDB:
             self.cursor.execute("DELETE FROM file_cache WHERE filepath = ?", (filepath,))
             self.conn.commit()
         except sqlite3.Error as e:
-            print(f"Delete error: {e}")
+            log.error("Delete error: %s", e)
 
     # ------------------------------------------------------------------ #
     # Search / retrieval                                                   #
@@ -139,7 +150,8 @@ class DocumentDB:
                 {"filename": r[0], "filepath": r[1], "content": r[2], "filetype": r[3]}
                 for r in rows
             ]
-        except sqlite3.Error:
+        except sqlite3.Error as e:
+            log.error("Get relevant docs error for query %r: %s", query, e)
             return []
 
     def search(self, query):
@@ -164,7 +176,7 @@ class DocumentDB:
                     seen[filepath] = (filename, filepath, snippet, filetype, max(count, 1))
             return list(seen.values())
         except sqlite3.Error as e:
-            print(f"Search error: {e}")
+            log.error("Search error: %s", e)
             return []
 
     def get_document(self, filepath):
@@ -175,11 +187,11 @@ class DocumentDB:
             )
             return self.cursor.fetchone()
         except sqlite3.Error as e:
-            print(f"Get document error: {e}")
+            log.error("Get document error: %s", e)
             return None
 
     def close(self):
         try:
             self.conn.close()
         except sqlite3.Error as e:
-            print(f"Error closing database: {e}")
+            log.error("Error closing database: %s", e)

@@ -10,7 +10,7 @@ import ParticleTitle from './ParticleTitle'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || ''
-const API_URL = import.meta.env.VITE_API_URL || ''
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
 const FILTER_GROUPS = [
   { id: 'all',    label: 'All' },
@@ -314,8 +314,13 @@ const ACTIVE_CHK = 'ocular_active_chat'
 function getAllChats() {
   try { return JSON.parse(localStorage.getItem(CHK)) || [] } catch { return [] }
 }
+const MAX_MESSAGES_PER_CHAT = 100
 function saveAllChats(chats) {
-  localStorage.setItem(CHK, JSON.stringify(chats.slice(0, 20))) // keep last 20 conversations
+  const trimmed = chats.slice(0, 20).map(chat => ({
+    ...chat,
+    messages: chat.messages ? chat.messages.slice(-MAX_MESSAGES_PER_CHAT) : [],
+  }))
+  localStorage.setItem(CHK, JSON.stringify(trimmed))
 }
 function getActiveId() {
   return localStorage.getItem(ACTIVE_CHK) || null

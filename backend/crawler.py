@@ -1,17 +1,23 @@
 import os
+import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import pdfplumber
-import docx
 import pytesseract
 from PIL import Image
 
 from backend.db import DocumentDB
 
+log = logging.getLogger("ocular.crawler")
+
 IGNORED_DIRS = {".git", ".vscode", ".idea", "node_modules", "venv", "__pycache__", "AppData"}
-MAX_WORKERS = 12       # I/O-bound file extraction benefits from more threads
-MAX_PDF_PAGES = 50     # Cap to avoid spending minutes on 500-page textbooks
+MAX_PDF_PAGES = 50
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
+
+# I/O-bound work (PDF/DOCX/TXT) can use many threads safely
+IO_WORKERS = 8
+# OCR is CPU-bound — limit to 2 concurrent processes to prevent overheating
+OCR_WORKERS = 2
 
 
 class FileCrawler:
@@ -23,6 +29,8 @@ class FileCrawler:
         self.deep_scan = deep_scan
         self.db = DocumentDB()
         self._db_lock = threading.Lock()
+        self._pending_writes = []
+        self._BATCH_SIZE = 20
 
     def crawl(self):
         files_to_process = []
@@ -39,45 +47,81 @@ class FileCrawler:
 
         total = len(files_to_process)
         if total == 0:
-            print("No supported files found.")
+            log.info("No supported files found.")
             return []
 
-        print(f"Found {total} files to process...")
+        log.info("Found %d files to process...", total)
+
+        # Split into text files (I/O-bound) and image files (CPU-bound)
+        text_files = []
+        image_files = []
+        for fp in files_to_process:
+            ext = os.path.splitext(fp)[1].lower()
+            if ext in self.IMAGE_EXTENSIONS:
+                image_files.append(fp)
+            else:
+                text_files.append(fp)
+
         documents = []
         done = 0
 
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = {
-                executor.submit(self._process_file, fp): fp
-                for fp in files_to_process
-            }
-            for future in as_completed(futures):
-                done += 1
-                result = future.result()
-                fp = futures[future]
-                filename = os.path.basename(fp)
-                if result is True:
-                    # File already indexed and unchanged — silently skip
-                    pass
-                elif result:
-                    documents.append(result)
-                    print(f"[{done}/{total}] Indexed: {filename}", flush=True)
-                else:
-                    print(f"[{done}/{total}] Skipped: {filename}", flush=True)
+        # Phase 1: Process text files with high concurrency (fast, I/O-bound)
+        if text_files:
+            log.info("Phase 1: Indexing %d text files...", len(text_files))
+            with ThreadPoolExecutor(max_workers=IO_WORKERS) as executor:
+                futures = {executor.submit(self._process_file, fp): fp for fp in text_files}
+                for future in as_completed(futures):
+                    done += 1
+                    result = future.result()
+                    fp = futures[future]
+                    filename = os.path.basename(fp)
+                    if result is True:
+                        pass
+                    elif result:
+                        documents.append(result)
+                        log.info("[%d/%d] Indexed: %s", done, total, filename)
+                    else:
+                        log.debug("[%d/%d] Skipped: %s", done, total, filename)
+            self._flush_writes()
 
-        print(f"Indexing complete. {len(documents)} new/updated files indexed.")
+        # Phase 2: Process images with low concurrency (slow, CPU-bound)
+        if image_files:
+            log.info("Phase 2: OCR on %d images (throttled)...", len(image_files))
+            with ThreadPoolExecutor(max_workers=OCR_WORKERS) as executor:
+                futures = {executor.submit(self._process_file, fp): fp for fp in image_files}
+                for future in as_completed(futures):
+                    done += 1
+                    result = future.result()
+                    fp = futures[future]
+                    filename = os.path.basename(fp)
+                    if result is True:
+                        pass
+                    elif result:
+                        documents.append(result)
+                        log.info("[%d/%d] Indexed: %s", done, total, filename)
+                    else:
+                        log.debug("[%d/%d] Skipped: %s", done, total, filename)
+            self._flush_writes()
+
+        log.info("Indexing complete. %d new/updated files indexed.", len(documents))
         return documents
 
     def _process_file(self, filepath):
         filename = os.path.basename(filepath)
         ext = os.path.splitext(filename)[1].lower()
 
-        # Skip files that haven't changed since the last scan
+        try:
+            if os.path.getsize(filepath) > MAX_FILE_SIZE:
+                log.info("Skipped (too large): %s", filename)
+                return None
+        except OSError:
+            pass
+
         try:
             mtime = os.path.getmtime(filepath)
             with self._db_lock:
                 if self.db.is_indexed(filepath, mtime):
-                    return True  # unchanged — nothing to do
+                    return True
         except OSError:
             mtime = 0.0
 
@@ -98,9 +142,7 @@ class FileCrawler:
                 return None
 
             if content:
-                with self._db_lock:
-                    self.db.add_document(filename, filepath, content, filetype)
-                    self.db.upsert_cache(filepath, mtime)
+                self._queue_write(filename, filepath, content, filetype, mtime)
                 return {
                     "filename": filename,
                     "filepath": filepath,
@@ -108,29 +150,58 @@ class FileCrawler:
                     "filetype": ext,
                 }
         except Exception as e:
-            print(f"Error processing {filename}: {e}")
+            log.error("Error processing %s: %s", filename, e)
         return None
+
+    def _queue_write(self, filename, filepath, content, filetype, mtime):
+        """Queue a DB write and flush in batches to reduce commit overhead."""
+        with self._db_lock:
+            self._pending_writes.append((filename, filepath, content, filetype, mtime))
+            if len(self._pending_writes) >= self._BATCH_SIZE:
+                self._flush_writes_unlocked()
+
+    def _flush_writes(self):
+        with self._db_lock:
+            self._flush_writes_unlocked()
+
+    def _flush_writes_unlocked(self):
+        """Write all pending documents in a single transaction."""
+        if not self._pending_writes:
+            return
+        try:
+            for filename, filepath, content, filetype, mtime in self._pending_writes:
+                self.db.add_document_no_commit(filename, filepath, content, filetype)
+                self.db.upsert_cache_no_commit(filepath, mtime)
+            self.db.conn.commit()
+        except Exception as e:
+            log.error("Batch write error: %s", e)
+            try:
+                self.db.conn.rollback()
+            except Exception:
+                pass
+        self._pending_writes.clear()
 
     def _process_pdf(self, filepath):
         try:
-            with pdfplumber.open(filepath) as pdf:
-                text = ""
-                for page in pdf.pages[:MAX_PDF_PAGES]:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text
-                return text if text else None
+            import fitz  # PyMuPDF — much faster than pdfplumber for text extraction
+            doc = fitz.open(filepath)
+            text = ""
+            for page in doc[:MAX_PDF_PAGES]:
+                text += page.get_text()
+            doc.close()
+            return text if text.strip() else None
         except Exception as e:
-            print(f"PDF error ({filepath}): {e}")
+            log.error("PDF error (%s): %s", filepath, e)
             return None
 
     def _process_docx(self, filepath):
         try:
+            import docx
             doc = docx.Document(filepath)
             text = "\n".join(para.text for para in doc.paragraphs)
             return text if text.strip() else None
         except Exception as e:
-            print(f"DOCX error ({filepath}): {e}")
+            log.error("DOCX error (%s): %s", filepath, e)
             return None
 
     def _process_txt(self, filepath):
@@ -139,7 +210,7 @@ class FileCrawler:
                 text = f.read()
             return text.strip() if text.strip() else None
         except Exception as e:
-            print(f"TXT error ({filepath}): {e}")
+            log.error("TXT error (%s): %s", filepath, e)
             return None
 
     def _process_image(self, filepath):
@@ -149,18 +220,19 @@ class FileCrawler:
 
             image = Image.open(filepath)
 
-            if image.width > 1000:
-                ratio = 1000 / image.width
-                new_size = (1000, int(image.height * ratio))
-                image = image.resize(new_size, Image.LANCZOS)
+            # Downscale aggressively — OCR doesn't need high resolution
+            if image.width > 800:
+                ratio = 800 / image.width
+                new_size = (800, int(image.height * ratio))
+                image = image.resize(new_size, Image.BILINEAR)
 
             image = image.convert("L")
 
-            text = pytesseract.image_to_string(image)
+            text = pytesseract.image_to_string(image, timeout=30)
             text = text.replace("\n", " ").replace("\r", " ").strip()
             return text if text else None
         except Exception as e:
-            print(f"Image OCR error ({filepath}): {e}")
+            log.error("Image OCR error (%s): %s", filepath, e)
             return None
 
 

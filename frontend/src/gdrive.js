@@ -129,10 +129,17 @@ export async function listFiles(token) {
 }
 
 // ── File downloading ──────────────────────────────────────
+function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer))
+}
+
 async function exportFile(token, fileId, mimeType) {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=${encodeURIComponent(mimeType)}`,
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: { Authorization: `Bearer ${token}` } },
+    15000,
   )
   if (!res.ok) throw new Error(`Export failed: ${res.status}`)
   return await res.text()
@@ -150,9 +157,9 @@ export async function downloadFile(token, file) {
   }
 
   // Regular files → download binary
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`, {
+  const res = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`, {
     headers: { Authorization: `Bearer ${token}` },
-  })
+  }, 30000)
   if (!res.ok) throw new Error(`Download failed: ${res.status}`)
 
   // Text files
