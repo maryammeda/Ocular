@@ -278,11 +278,14 @@ const TIPS = [
   'Search inside PDFs, DOCX, and Google Docs — not just filenames',
   'Hover over a result to preview its full content',
   'Connect Google Drive to search across all your cloud documents',
-  'Your indexed files persist between sessions — no need to re-scan',
+  'Re-scanning a folder is instant — only changed files get re-indexed',
   'Use specific keywords for better results — Ocular ranks by match count',
   'Index any folder on your computer using the scan panel',
   'Google Docs and Sheets are automatically converted to searchable text',
-  'Results are sorted by how many times your keyword appears in the file',
+  'Ask the AI chat questions about your files — it cites sources for every answer',
+  'You can search and chat while images are still being OCR-processed in the background',
+  'Drag and drop files or folders directly onto the app to index them',
+  'Press Ctrl+K to jump to the search bar from anywhere',
 ]
 
 function RotatingTips() {
@@ -451,20 +454,21 @@ function ChatPanel({ open, onClose, indexedCount, onSearchFile }) {
     setLoading(true)
 
     try {
-      // Simple approach: send ALL documents to the AI, let it figure out relevance.
-      // Truncate each doc to fit within model context limits.
-      const allDocs = engine.documents || []
-      if (!allDocs.length) throw new Error('No documents indexed yet. Scan a folder or connect Google Drive first.')
+      if (!engine.documents?.length) throw new Error('No documents indexed yet. Scan a folder or connect Google Drive first.')
 
-      // Budget: ~80K chars total for sources. Divide evenly across docs.
-      const MAX_TOTAL_CHARS = 80000
-      const charsPerDoc = Math.max(200, Math.floor(MAX_TOTAL_CHARS / allDocs.length))
+      // Retrieve only the most relevant documents for this question
+      let relevant = engine.retrieve(q, 15)
+      if (!relevant.length) {
+        // Fallback: if retrieve finds nothing (e.g. very generic question), send first 15 docs
+        relevant = engine.documents.slice(0, 15)
+      }
 
-      const sources = allDocs.map(doc => ({
-        filename: doc.filename,
-        filepath: doc.filepath,
-        content: (doc.content || '').slice(0, charsPerDoc),
-      })).filter(s => s.content.length > 0)
+      // Look up full content from engine.documents and give each doc up to 5000 chars
+      const sources = relevant.map(doc => {
+        const full = engine.getDocument(doc.filepath)
+        const content = (full?.content || doc.content || '').slice(0, 5000)
+        return { filename: doc.filename, filepath: doc.filepath, content }
+      }).filter(s => s.content.length > 0)
 
       // Build conversation history from last 3 completed exchanges
       const history = []
