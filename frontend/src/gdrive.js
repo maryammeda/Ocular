@@ -36,7 +36,7 @@ export async function authorize(clientId, scope = 'https://www.googleapis.com/au
         resolve(resp.access_token)
       },
     })
-    client.requestAccessToken()
+    client.requestAccessToken({ prompt: 'consent' })
   })
 }
 
