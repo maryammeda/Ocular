@@ -31,6 +31,7 @@ export async function authorize(clientId, scope = 'https://www.googleapis.com/au
     const client = google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope,
+      use_fedcm_for_prompt: false,
       callback: (resp) => {
         if (resp.error) return reject(new Error(resp.error_description || resp.error))
         resolve(resp.access_token)
