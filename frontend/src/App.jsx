@@ -8,8 +8,8 @@ import ApertureCanvas from './ApertureCanvas'
 import ParticleCanvas from './ParticleCanvas'
 import ParticleTitle from './ParticleTitle'
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '626244387316-s9i3efsdc4omr5mbbm9tjkug92k5f35i.apps.googleusercontent.com'
-const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || 'AIzaSyBunbntzabQs3GhGmPqFIXUl-Id3IGykeg'
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
+const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
 const FILTER_GROUPS = [
