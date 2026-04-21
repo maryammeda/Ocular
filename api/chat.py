@@ -29,7 +29,7 @@ GROQ_MODEL = "llama-3.1-8b-instant"
 # Cerebras runs the same Llama models with 2x Groq's TPM (60k vs 30k).
 # Different quota pool, so it picks up when Groq is saturated.
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
-CEREBRAS_MODEL = "llama-3.3-70b"
+CEREBRAS_MODEL = "llama3.3-70b"
 
 # Gemini exposes an OpenAI-compatible endpoint. Third-tier fallback with its own quota pool.
 # Note: 2.0 Flash is existing-customers-only as of March 2026; 2.5 Flash is available to new accounts.
@@ -92,6 +92,11 @@ def _try_provider(url, api_key, model, messages, timeout=9.0):
             timeout=timeout,
         ) as response:
             if response.status_code == 429:
+                response.read()
+                yield ("ratelimit", None)
+                return
+            # 503 is transient overload — treat like rate-limit so chain falls over to next provider
+            if response.status_code == 503:
                 response.read()
                 yield ("ratelimit", None)
                 return
