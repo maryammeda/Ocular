@@ -168,10 +168,11 @@ def stream_response(question, sources, history=None):
     if gemini_key:
         providers.append(("Gemini", GEMINI_URL, gemini_key, GEMINI_MODEL))
 
-    last_error = None
-    last_provider = None
+    # Track what happened with each provider for debugging
+    provider_outcomes = []
     for provider_name, url, key, model in providers:
         any_token = False
+        outcome = None
         for event_type, payload in _try_provider(url, key, model, messages):
             if event_type == "token":
                 any_token = True
@@ -180,23 +181,20 @@ def stream_response(question, sources, history=None):
                 yield "event: done\ndata: {}\n\n"
                 return
             elif event_type == "ratelimit":
-                # Try next provider silently
-                last_provider = provider_name
+                outcome = f"{provider_name}: rate-limited"
                 break
             elif event_type == "error":
-                last_error = f"{provider_name}: {payload}"
-                last_provider = provider_name
-                # If we already streamed tokens from this provider, don't fail over — surface error.
+                outcome = f"{provider_name}: {payload}"
                 if any_token:
-                    yield f"event: error\ndata: {json.dumps({'message': last_error})}\n\n"
+                    # Already streamed partial response, can't fail over
+                    yield f"event: error\ndata: {json.dumps({'message': outcome})}\n\n"
                     return
-                # Otherwise try next provider
                 break
+        if outcome:
+            provider_outcomes.append(outcome)
 
-    # All providers exhausted
-    final_msg = "Both AI providers are rate-limited right now — please try again in a minute." if len(providers) > 1 else "Rate limited. Please wait a moment and try again."
-    if last_error and last_error != "empty_response":
-        final_msg = last_error
+    # All providers exhausted — surface the full chain of failures
+    final_msg = "All AI providers failed: " + " | ".join(provider_outcomes) if provider_outcomes else "No AI providers configured."
     yield f"event: error\ndata: {json.dumps({'message': final_msg})}\n\n"
 
 
