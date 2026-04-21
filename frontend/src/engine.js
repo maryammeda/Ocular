@@ -182,6 +182,40 @@ class SearchEngine {
     await this._batchPromise
   }
 
+  // ── Pre-count supported files in a directory tree (no content extraction) ──
+  // Walks the tree quickly, returns { textFiles, imageFiles, total }
+  // onProgress(count) fires periodically so UI can show counting-in-progress
+  async countFiles(dirHandle, onProgress) {
+    let textFiles = 0
+    let imageFiles = 0
+    let lastReport = 0
+
+    const walk = async (handle) => {
+      for await (const entry of handle.values()) {
+        if (entry.kind === 'directory') {
+          if (IGNORED_DIRS.has(entry.name)) continue
+          await walk(entry)
+        } else {
+          const dotIdx = entry.name.lastIndexOf('.')
+          if (dotIdx === -1) continue
+          const ext = entry.name.slice(dotIdx).toLowerCase()
+          const type = SUPPORTED[ext]
+          if (!type) continue
+          if (type === 'image') imageFiles++
+          else textFiles++
+          const total = textFiles + imageFiles
+          if (total - lastReport >= 50) {
+            lastReport = total
+            onProgress?.(total)
+          }
+        }
+      }
+    }
+
+    await walk(dirHandle)
+    return { textFiles, imageFiles, total: textFiles + imageFiles }
+  }
+
   // ── Scan a single directory (fully streaming, non-blocking) ──
   // Processes files AS they are discovered — no collect-then-process.
   // Returns { textCount, imageCount, ocrPromise, skippedCount }

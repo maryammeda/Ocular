@@ -1033,13 +1033,28 @@ function App() {
     try {
       const dirHandle = await window.showDirectoryPicker({ mode: 'read' })
       const folderLabel = (dirHandle.name || 'Drive').replace(/[\\/]+/g, '').trim() || 'Drive'
-      setOcrProgress({ done: 0, total: 0, file: '', label: `Indexing Drive — ${folderLabel}` })
+
+      // Phase 1: Count files first so we can show a real progress bar
+      setOcrProgress({ done: 0, total: 0, file: '', label: `Counting files in ${folderLabel}` })
+      const { textFiles, imageFiles, total: totalFiles } = await engine.countFiles(dirHandle, (count) => {
+        setOcrProgress(prev => prev ? { ...prev, done: count, label: `Counting files in ${folderLabel}` } : null)
+      })
+
+      if (totalFiles === 0) {
+        setOcrProgress(null)
+        return notify(`No supported files found in ${folderLabel}`, 'error')
+      }
+
+      // Phase 2: Scan with known total for accurate progress bar
+      const indexableTotal = ocrEnabled ? totalFiles : textFiles
+      setOcrProgress({ done: 0, total: indexableTotal, file: '', label: `Indexing Drive — ${folderLabel}` })
 
       const onTextProgress = (count, filename) => {
-        setOcrProgress(prev => prev ? { ...prev, done: count, file: filename } : null)
+        setOcrProgress(prev => prev ? { ...prev, done: count, total: indexableTotal, file: filename } : null)
         setIndexedCount(engine.count)
       }
       const onOcrProgress = (done, total, file) => {
+        // OCR phase has its own counter
         setOcrProgress({ done, total, file, label: 'OCR' })
         setIndexedCount(engine.count)
       }
