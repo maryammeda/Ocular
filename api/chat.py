@@ -29,9 +29,9 @@ GROQ_MODEL = "llama-3.1-8b-instant"
 # Cerebras runs the same Llama models with 2x Groq's TPM (60k vs 30k).
 # Different quota pool, so it picks up when Groq is saturated.
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
-# gpt-oss-120b is OpenAI's open-source 120B model — 15x larger than llama-8b,
-# smarter answers, still fast on Cerebras hardware.
-CEREBRAS_MODEL = "gpt-oss-120b"
+# Default/free-tier Cerebras keys only have access to llama3.1-8b.
+# Verified working via direct API test. Matches Groq's primary model.
+CEREBRAS_MODEL = "llama3.1-8b"
 
 # Gemini exposes an OpenAI-compatible endpoint. Third-tier fallback with its own quota pool.
 # Note: 2.0 Flash is existing-customers-only as of March 2026; 2.5 Flash is available to new accounts.
