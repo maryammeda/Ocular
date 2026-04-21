@@ -67,8 +67,15 @@ async function getOcrScheduler() {
       tessjs_create_unlv: '0',
       tessjs_create_osd: '0',
     }
+    // Use fast tessdata + LSTM-only engine for 2-3x speedup (~95% accuracy of standard).
+    // legacy engine is OFF (OEM 1 = LSTM only). Fast model is smaller and faster.
+    const workerOptions = {
+      langPath: 'https://tessdata.projectnaptha.com/4.0.0_fast',
+      // cachePath lets the browser cache the model so it only downloads once
+      cachePath: 'tesseract-cache',
+    }
     await Promise.all(Array.from({ length: OCR_WORKERS }, async () => {
-      const worker = await Tesseract.createWorker('eng')
+      const worker = await Tesseract.createWorker('eng', 1, workerOptions) // 1 = OEM.LSTM_ONLY
       await worker.setParameters(params)
       _ocrScheduler.addWorker(worker)
     }))
@@ -317,11 +324,11 @@ class SearchEngine {
     for (const { entry, ext, pathPrefix } of imageFiles) {
       try {
         const file = await entry.getFile()
-        // Skip too-small (icons/thumbs) and too-large (photos) images
-        if (file.size < 5 * 1024 || file.size > MAX_OCR_IMAGE_SIZE) { done++; onOcrProgress?.(done, total, entry.name); continue }
+        // Only skip files that would crash the browser (50MB+)
+        if (file.size > MAX_CLIENT_FILE_SIZE) { done++; onOcrProgress?.(done, total, entry.name); continue }
 
         const filepath = `${pathPrefix}/${entry.name}`
-        // Skip unchanged images too
+        // Skip unchanged images — already indexed in previous scan
         if (this._isUnchanged(filepath, file.lastModified)) { done++; onOcrProgress?.(done, total, entry.name); continue }
 
         // Preprocess: resize + greyscale → much less CPU per image
