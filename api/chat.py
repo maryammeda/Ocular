@@ -26,8 +26,12 @@ app = FastAPI()
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama-3.1-8b-instant"
 
-# Gemini exposes an OpenAI-compatible endpoint so the request/stream shape is identical.
-# Used as automatic fallback when Groq is rate-limited.
+# Cerebras runs the same Llama models with 2x Groq's TPM (60k vs 30k).
+# Different quota pool, so it picks up when Groq is saturated.
+CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
+CEREBRAS_MODEL = "llama-3.3-70b"
+
+# Gemini exposes an OpenAI-compatible endpoint. Third-tier fallback with its own quota pool.
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 GEMINI_MODEL = "gemini-2.0-flash"
 
@@ -130,8 +134,9 @@ def _try_provider(url, api_key, model, messages, timeout=9.0):
 
 def stream_response(question, sources, history=None):
     groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    cerebras_key = os.getenv("CEREBRAS_API_KEY", "").strip()
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not groq_key and not gemini_key:
+    if not any([groq_key, cerebras_key, gemini_key]):
         yield f"event: error\ndata: {json.dumps({'message': 'Ocular AI is not configured yet.'})}\n\n"
         return
 
@@ -152,10 +157,13 @@ def stream_response(question, sources, history=None):
         messages.extend(history)
     messages.append({"role": "user", "content": user_content})
 
-    # Build provider chain — Groq first (fast), Gemini fallback (different quota pool).
+    # Build provider chain — each has an independent quota pool.
+    # Order: Groq (fastest) → Cerebras (2x Groq's TPM, same Llama models) → Gemini (1M TPM ceiling).
     providers = []
     if groq_key:
         providers.append(("Groq", GROQ_URL, groq_key, GROQ_MODEL))
+    if cerebras_key:
+        providers.append(("Cerebras", CEREBRAS_URL, cerebras_key, CEREBRAS_MODEL))
     if gemini_key:
         providers.append(("Gemini", GEMINI_URL, gemini_key, GEMINI_MODEL))
 
