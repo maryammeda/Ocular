@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Search, FolderOpen, Upload, Loader2, FileText, FileCode, FileImage, File, CheckCircle2, AlertCircle, X, Clock, Trash2, Sparkles, Plus, MessageCircle, Cloud, ArrowUp, ScanLine, Copy, Download } from 'lucide-react'
+import { Search, FolderOpen, Upload, Loader2, FileText, FileCode, FileImage, File, CheckCircle2, AlertCircle, X, Clock, Trash2, Sparkles, Plus, MessageCircle, Cloud, ArrowUp, ScanLine, Copy, Download, HardDrive } from 'lucide-react'
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import { engine } from './engine'
@@ -778,6 +778,7 @@ function App() {
   const [clearConfirm, setClearConfirm] = useState(false)
   const [snapCount, setSnapCount] = useState(0)
   const [showFullDriveSetup, setShowFullDriveSetup] = useState(false)
+  const [showDriveDesktopModal, setShowDriveDesktopModal] = useState(false)
   const [userClientId, setUserClientId] = useState(() => localStorage.getItem('ocular_user_gdrive_client_id') || '')
   const [ocrProgress, setOcrProgress] = useState(null) // { done, total, file } or null
   const inputRef = useRef(null)
@@ -1019,6 +1020,57 @@ function App() {
   const handleFullDriveScan = async () => {
     setScanPanelOpen(false)
     setShowFullDriveSetup(true)
+  }
+
+  const handleDriveDesktop = async () => {
+    setScanPanelOpen(false)
+    setShowDriveDesktopModal(true)
+  }
+
+  const startDriveDesktopScan = async () => {
+    setShowDriveDesktopModal(false)
+    if (!supportsFS) return notify('Please use Chrome or Edge to scan folders.', 'error')
+    try {
+      const dirHandle = await window.showDirectoryPicker({ mode: 'read' })
+      setOcrProgress({ done: 0, total: 0, file: '', label: `Indexing ${dirHandle.name} from Drive...` })
+
+      const onTextProgress = (count, filename) => {
+        setOcrProgress(prev => prev ? { ...prev, done: count, file: filename } : null)
+        setIndexedCount(engine.count)
+      }
+      const onOcrProgress = (done, total, file) => {
+        setOcrProgress({ done, total, file, label: 'OCR' })
+        setIndexedCount(engine.count)
+      }
+
+      const { textCount, imageCount, skippedCount, ocrPromise } = await engine.scanDirectory(
+        dirHandle, onTextProgress, { ocrEnabled, onOcrProgress }
+      )
+
+      setIndexedCount(engine.count)
+
+      if (imageCount > 0) {
+        setOcrProgress({ done: 0, total: imageCount, file: '', label: 'OCR' })
+        const msg = textCount > 0
+          ? `${textCount} Drive files indexed${skippedCount > 0 ? `, ${skippedCount} unchanged` : ''} — OCR running on ${imageCount} images`
+          : skippedCount > 0 ? `${skippedCount} Drive files unchanged — OCR running on ${imageCount} images` : `OCR running on ${imageCount} images`
+        notify(msg)
+        ocrPromise.then(async (ocrCount) => {
+          setOcrProgress(null)
+          setIndexedCount(await engine.syncCount())
+          if (ocrCount > 0) notify(`OCR complete — ${ocrCount} images indexed`)
+        }).catch(() => setOcrProgress(null))
+      } else {
+        setOcrProgress(null)
+        const msg = textCount > 0
+          ? `${textCount} Drive files indexed from ${dirHandle.name}${skippedCount > 0 ? ` (${skippedCount} unchanged)` : ''}`
+          : skippedCount > 0 ? `All ${skippedCount} Drive files already up to date` : 'No supported files found in this folder'
+        notify(msg)
+      }
+    } catch (e) {
+      setOcrProgress(null)
+      if (e.name !== 'AbortError') notify(e.message, 'error')
+    }
   }
 
   const startFullDriveScanFromSetup = async () => {
@@ -1334,6 +1386,7 @@ function App() {
                 {[
                   { icon: FolderOpen, title: 'Scan Folder', desc: 'Choose a folder on your computer to index', action: handleScan },
                   { icon: Cloud, title: 'Select from Drive', desc: 'Pick files or folders from Google Drive', action: handleQuickScan },
+                  { icon: HardDrive, title: 'Scan Google Drive', desc: 'Index your whole Drive locally — fastest & most private', action: handleDriveDesktop },
                   { icon: Cloud, title: 'Full Drive Scan', desc: 'Index your entire Drive — one-time setup', action: handleFullDriveScan },
                 ].map(({ icon: Icon, title, desc, action }) => (
                   <motion.button key={title}
@@ -1530,6 +1583,52 @@ function App() {
                 <button onClick={startFullDriveScanFromSetup}
                   className="px-6 py-2.5 rounded-full text-[13px] bg-white text-black hover:bg-white/90 transition-all" style={{ fontWeight: 500 }}>
                   Start
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Scan Google Drive (Drive for Desktop) modal */}
+      <AnimatePresence>
+        {showDriveDesktopModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xl flex items-center justify-center p-4"
+            onClick={() => setShowDriveDesktopModal(false)}>
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              className="liquid-glass-strong rounded-2xl p-8 max-w-lg w-full">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="font-heading text-xl text-white">Scan Google Drive</h2>
+                <button onClick={() => setShowDriveDesktopModal(false)} className="text-white/30 hover:text-white/60 transition"><X size={18} /></button>
+              </div>
+              <div className="text-white/50 text-[13px] space-y-4 mb-6 leading-relaxed" style={{ fontWeight: 300 }}>
+                <p className="text-white/75">The fastest, most private way to index your Drive — no login, no warnings, no API limits.</p>
+
+                <div className="pt-1 space-y-3">
+                  <div>
+                    <p className="text-white/60 mb-1" style={{ fontWeight: 400 }}>First time? Install Drive for Desktop</p>
+                    <p className="text-white/35 text-[12px]">Google's free official app syncs your Drive to a local folder. <a href="https://www.google.com/drive/download/" target="_blank" rel="noopener noreferrer" className="text-white/65 underline underline-offset-2">Download here</a> → sign in → done.</p>
+                  </div>
+
+                  <div>
+                    <p className="text-white/60 mb-1" style={{ fontWeight: 400 }}>Then pick your Drive folder below</p>
+                    <p className="text-white/35 text-[12px]">Select the <span className="text-white/55">root folder</span> to index everything, or a <span className="text-white/55">specific subfolder</span> for just that area.</p>
+                    <p className="text-white/30 text-[11px] mt-1.5">Root folder is usually <code className="text-white/50 bg-white/[0.06] px-1.5 py-0.5 rounded">G:\My Drive</code> on Windows or <code className="text-white/50 bg-white/[0.06] px-1.5 py-0.5 rounded">~/Google Drive</code> on Mac.</p>
+                  </div>
+                </div>
+
+                <p className="text-white/30 text-[11px] pt-3 border-t border-white/[0.06]">100% private — files stay on your device. Nothing uploaded, nothing logged.</p>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setShowDriveDesktopModal(false)}
+                  className="px-5 py-2.5 rounded-full text-[13px] text-white/50 hover:text-white/80 transition" style={{ fontWeight: 400 }}>
+                  Cancel
+                </button>
+                <button onClick={startDriveDesktopScan}
+                  className="flex-1 px-6 py-2.5 rounded-full text-[13px] bg-white text-black hover:bg-white/90 transition-all" style={{ fontWeight: 500 }}>
+                  Choose Drive Folder
                 </button>
               </div>
             </motion.div>
