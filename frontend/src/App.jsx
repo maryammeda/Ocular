@@ -1411,7 +1411,9 @@ function App() {
                   { icon: FolderOpen, title: 'Scan Folder', desc: 'Choose a folder on your computer to index', action: handleScan },
                   { icon: Cloud, title: 'Select from Drive', desc: 'Pick files or folders from Google Drive', action: handleQuickScan },
                   { icon: HardDrive, title: 'Scan Google Drive', desc: 'Index your whole Drive locally — fastest & most private', action: handleDriveDesktop },
-                  { icon: Cloud, title: 'Full Drive Scan', desc: 'Index your entire Drive — one-time setup', action: handleFullDriveScan },
+                  // Full Drive Scan hidden from UI — OAuth consent screen warnings can't be avoided for drive.readonly scope without paid CASA audit.
+                  // Code preserved below (handleFullDriveScan, startFullDriveScanFromSetup, and modal) in case we re-enable later.
+                  // { icon: Cloud, title: 'Full Drive Scan', desc: 'Index your entire Drive — one-time setup', action: handleFullDriveScan },
                 ].map(({ icon: Icon, title, desc, action }) => (
                   <motion.button key={title}
                     whileHover={{ scale: 1.02 }}
