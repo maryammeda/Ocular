@@ -1043,6 +1043,11 @@ function App() {
       const countMs = Math.round(performance.now() - countStart)
       console.log(`[Ocular] Count complete: ${totalFiles} files (${textFiles} text, ${imageFiles} images) in ${countMs}ms`)
 
+      // Show the final count briefly so user sees counting happened (minimum 800ms visible)
+      setOcrProgress({ done: totalFiles, total: totalFiles, file: '', label: `Found ${totalFiles} files` })
+      const elapsed = performance.now() - countStart
+      if (elapsed < 800) await new Promise(r => setTimeout(r, 800 - elapsed))
+
       if (totalFiles === 0) {
         setOcrProgress(null)
         return notify(`No supported files found in ${folderLabel}`, 'error')
