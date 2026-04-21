@@ -1036,9 +1036,12 @@ function App() {
 
       // Phase 1: Count files first so we can show a real progress bar
       setOcrProgress({ done: 0, total: 0, file: '', label: `Counting files in ${folderLabel}` })
+      const countStart = performance.now()
       const { textFiles, imageFiles, total: totalFiles } = await engine.countFiles(dirHandle, (count) => {
         setOcrProgress(prev => prev ? { ...prev, done: count, label: `Counting files in ${folderLabel}` } : null)
       })
+      const countMs = Math.round(performance.now() - countStart)
+      console.log(`[Ocular] Count complete: ${totalFiles} files (${textFiles} text, ${imageFiles} images) in ${countMs}ms`)
 
       if (totalFiles === 0) {
         setOcrProgress(null)
