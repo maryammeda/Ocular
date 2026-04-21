@@ -14,7 +14,7 @@ const IGNORED_DIRS = new Set([
 const DB_NAME = 'ocular_index'
 const STORE_NAME = 'documents'
 const MAX_CLIENT_FILE_SIZE = 50 * 1024 * 1024
-const IDB_BATCH_SIZE = 25
+const IDB_BATCH_SIZE = 5
 const CONCURRENT_FILES = 6
 
 // ── PDF extraction (lazy-loaded) ──────────────────────────
