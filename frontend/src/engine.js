@@ -38,15 +38,16 @@ async function getMammoth() {
 }
 
 // ── OCR with parallel workers (lazy-loaded) ──────────────
-// Adaptive worker count: scales with CPU but stays conservative for thermal health.
-// Uses roughly half the cores, capped at 4. This gives older machines breathing
-// room (1-2 workers) while letting newer machines be faster (3-4 workers).
+// Adaptive worker count tuned for both efficiency and modern hardware.
+// Apple Silicon iMacs/MacBooks report 8+ cores with 4 performance cores —
+// using 4 workers maps neatly to those P-cores for optimal throughput.
 const OCR_WORKERS = (() => {
   const cores = navigator.hardwareConcurrency || 4
   if (cores <= 2) return 1
   if (cores <= 4) return 2
-  if (cores <= 8) return 3
-  return 4
+  if (cores <= 6) return 3
+  if (cores <= 10) return 4   // 8-core machines (M1/M2/M3 iMac, mid-range Intel)
+  return 6                     // M1 Pro/Max/Ultra, high-end desktop
 })()
 // Skip images > 3MB — usually photos, rarely contain useful text
 const MAX_OCR_IMAGE_SIZE = 3 * 1024 * 1024
@@ -374,10 +375,10 @@ class SearchEngine {
       }
     }
 
-    // Bounded parallelism: keeps OCR_WORKERS+2 images in the pipeline at all
-    // times. The +2 accounts for I/O wait on macOS Drive (file download).
-    // Without this, all but one Tesseract worker sat idle — major bug fix.
-    const PIPELINE_SLOTS = OCR_WORKERS + 2
+    // Bounded parallelism with deeper pipeline. macOS FileProvider has high
+    // per-read latency, so we keep OCR_WORKERS+4 slots in flight — extra slots
+    // load/preprocess next images while OCR'ing current ones, masking I/O wait.
+    const PIPELINE_SLOTS = OCR_WORKERS + 4
     let idx = 0
     const slot = async () => {
       while (idx < imageFiles.length) {
