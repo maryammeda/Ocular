@@ -32,8 +32,9 @@ CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 CEREBRAS_MODEL = "llama-3.3-70b"
 
 # Gemini exposes an OpenAI-compatible endpoint. Third-tier fallback with its own quota pool.
+# Note: 2.0 Flash is existing-customers-only as of March 2026; 2.5 Flash is available to new accounts.
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 
 class ChatSource(BaseModel):
@@ -168,6 +169,7 @@ def stream_response(question, sources, history=None):
         providers.append(("Gemini", GEMINI_URL, gemini_key, GEMINI_MODEL))
 
     last_error = None
+    last_provider = None
     for provider_name, url, key, model in providers:
         any_token = False
         for event_type, payload in _try_provider(url, key, model, messages):
@@ -179,12 +181,14 @@ def stream_response(question, sources, history=None):
                 return
             elif event_type == "ratelimit":
                 # Try next provider silently
+                last_provider = provider_name
                 break
             elif event_type == "error":
-                last_error = payload
+                last_error = f"{provider_name}: {payload}"
+                last_provider = provider_name
                 # If we already streamed tokens from this provider, don't fail over — surface error.
                 if any_token:
-                    yield f"event: error\ndata: {json.dumps({'message': payload})}\n\n"
+                    yield f"event: error\ndata: {json.dumps({'message': last_error})}\n\n"
                     return
                 # Otherwise try next provider
                 break
