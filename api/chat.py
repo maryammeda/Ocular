@@ -39,7 +39,7 @@ class ChatRequest(BaseModel):
     history: list[dict] = []
 
 
-def _top_sources(question: str, sources: list, top_n: int = 8) -> list:
+def _top_sources(question: str, sources: list, top_n: int = 6) -> list:
     """Score sources by keyword relevance and return the top N most relevant."""
     words = [w.lower() for w in question.split() if len(w) > 3]
     if not words:
@@ -57,7 +57,7 @@ def _top_sources(question: str, sources: list, top_n: int = 8) -> list:
 def build_context(question, sources):
     context_parts = []
     for i, src in enumerate(sources, 1):
-        content = (src.get("content") or "")[:3000]
+        content = (src.get("content") or "")[:2000]
         context_parts.append(f"--- Source {i}: {src['filename']} ---\n{content}\n")
     context_block = "\n".join(context_parts)
     return f"""== DOCUMENT SOURCES ==

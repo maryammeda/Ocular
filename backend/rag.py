@@ -34,7 +34,7 @@ def _score_client_sources(question: str, sources: list, top_n: int = 5) -> list:
 def build_prompt(question: str, sources: list) -> str:
     context_parts = []
     for i, src in enumerate(sources, 1):
-        content = (src.get("content") or "")[:3000]
+        content = (src.get("content") or "")[:2000]
         context_parts.append(f"--- Source {i}: {src['filename']} ---\n{content}\n")
     context_block = "\n".join(context_parts)
     return (
