@@ -243,11 +243,17 @@ class SearchEngine {
 
     // Bounded parallel BFS — walks 16 directories simultaneously.
     // Hides per-call I/O latency without overwhelming the file system.
+    // Surface enumeration errors so silent failures don't drop entire subtrees.
     const queue = [dirHandle]
     const CONCURRENCY = 16
     while (queue.length > 0) {
       const batch = queue.splice(0, CONCURRENCY)
-      const results = await Promise.all(batch.map(h => processDir(h).catch(() => [])))
+      const results = await Promise.all(batch.map(h =>
+        processDir(h).catch(err => {
+          console.warn(`Failed to enumerate "${h.name}":`, err.message)
+          return []
+        })
+      ))
       for (const subs of results) queue.push(...subs)
     }
 
@@ -338,23 +344,22 @@ class SearchEngine {
   async _processImagesBackground(imageFiles, onOcrProgress) {
     let done = 0
     const total = imageFiles.length
+    const scheduler = await getOcrScheduler()
 
-    for (const { entry, ext, pathPrefix } of imageFiles) {
+    // Process one image: load, preprocess, OCR, save.
+    // This is what each "pipeline slot" runs.
+    const processOne = async ({ entry, ext, pathPrefix }) => {
       try {
         const file = await entry.getFile()
-        // Only skip files that would crash the browser (50MB+)
-        if (file.size > MAX_CLIENT_FILE_SIZE) { done++; onOcrProgress?.(done, total, entry.name); continue }
+        if (file.size > MAX_CLIENT_FILE_SIZE) return
 
         const filepath = `${pathPrefix}/${entry.name}`
-        // Skip unchanged images — already indexed in previous scan
-        if (this._isUnchanged(filepath, file.lastModified)) { done++; onOcrProgress?.(done, total, entry.name); continue }
+        if (this._isUnchanged(filepath, file.lastModified)) return
 
-        // Preprocess: resize + greyscale → much less CPU per image
         const processedCanvas = await preprocessForOcr(file)
-        if (!processedCanvas) { done++; onOcrProgress?.(done, total, entry.name); continue }
+        if (!processedCanvas) return
 
         const imageData = await fileToDataURL(file)
-        const scheduler = await getOcrScheduler()
         const { data } = await scheduler.addJob('recognize', processedCanvas)
         const content = data.text?.trim() || ''
         const doc = {
@@ -364,13 +369,26 @@ class SearchEngine {
         }
         await this._queueWrite(doc)
         this._upsertMem(doc)
-        done++
-        onOcrProgress?.(done, total, entry.name)
       } catch (e) {
-        done++
         console.warn(`Skipped ${entry.name}:`, e.message)
       }
     }
+
+    // Bounded parallelism: keeps OCR_WORKERS+2 images in the pipeline at all
+    // times. The +2 accounts for I/O wait on macOS Drive (file download).
+    // Without this, all but one Tesseract worker sat idle — major bug fix.
+    const PIPELINE_SLOTS = OCR_WORKERS + 2
+    let idx = 0
+    const slot = async () => {
+      while (idx < imageFiles.length) {
+        const i = idx++
+        const item = imageFiles[i]
+        await processOne(item)
+        done++
+        onOcrProgress?.(done, total, item.entry.name)
+      }
+    }
+    await Promise.all(Array.from({ length: PIPELINE_SLOTS }, slot))
 
     await this._flushAll()
     scheduleOcrCleanup()

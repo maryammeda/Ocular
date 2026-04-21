@@ -1638,6 +1638,7 @@ function App() {
                 </div>
 
                 <p className="text-white/30 text-[11px] pt-3 border-t border-white/[0.06]">100% private — files stay on your device. Nothing uploaded, nothing logged.</p>
+                <p className="text-white/35 text-[11px]"><span className="text-white/55">macOS tip:</span> if files are missing, set Drive for Desktop to <span className="text-white/55">Mirror files</span> mode (Drive icon → Settings → Google Drive). Stream mode hides files from the browser.</p>
               </div>
               <div className="flex gap-3">
                 <button onClick={() => setShowDriveDesktopModal(false)}
