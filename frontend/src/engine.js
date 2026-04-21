@@ -203,18 +203,30 @@ class SearchEngine {
   }
 
   // ── Pre-count supported files in a directory tree (no content extraction) ──
-  // Walks the tree quickly, returns { textFiles, imageFiles, total }
-  // onProgress(count) fires periodically so UI can show counting-in-progress
+  // Walks the tree IN PARALLEL using a bounded worker pool. On systems with
+  // slow per-entry I/O (e.g. macOS Drive for Desktop's FileProvider, network
+  // mounts), this is dramatically faster than sequential recursion.
+  // Returns { textFiles, imageFiles, total }
   async countFiles(dirHandle, onProgress) {
     let textFiles = 0
     let imageFiles = 0
     let lastReport = 0
 
-    const walk = async (handle) => {
+    const reportProgress = () => {
+      const total = textFiles + imageFiles
+      if (total - lastReport >= 100) {
+        lastReport = total
+        onProgress?.(total)
+      }
+    }
+
+    // Process one directory: count files + collect subdirectories to enqueue.
+    const processDir = async (handle) => {
+      const subdirs = []
       for await (const entry of handle.values()) {
         if (entry.kind === 'directory') {
           if (IGNORED_DIRS.has(entry.name)) continue
-          await walk(entry)
+          subdirs.push(entry)
         } else {
           const dotIdx = entry.name.lastIndexOf('.')
           if (dotIdx === -1) continue
@@ -223,16 +235,22 @@ class SearchEngine {
           if (!type) continue
           if (type === 'image') imageFiles++
           else textFiles++
-          const total = textFiles + imageFiles
-          if (total - lastReport >= 50) {
-            lastReport = total
-            onProgress?.(total)
-          }
+          reportProgress()
         }
       }
+      return subdirs
     }
 
-    await walk(dirHandle)
+    // Bounded parallel BFS — walks 16 directories simultaneously.
+    // Hides per-call I/O latency without overwhelming the file system.
+    const queue = [dirHandle]
+    const CONCURRENCY = 16
+    while (queue.length > 0) {
+      const batch = queue.splice(0, CONCURRENCY)
+      const results = await Promise.all(batch.map(h => processDir(h).catch(() => [])))
+      for (const subs of results) queue.push(...subs)
+    }
+
     return { textFiles, imageFiles, total: textFiles + imageFiles }
   }
 
