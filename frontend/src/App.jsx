@@ -1032,7 +1032,8 @@ function App() {
     if (!supportsFS) return notify('Please use Chrome or Edge to scan folders.', 'error')
     try {
       const dirHandle = await window.showDirectoryPicker({ mode: 'read' })
-      setOcrProgress({ done: 0, total: 0, file: '', label: `Indexing ${dirHandle.name} from Drive...` })
+      const folderLabel = (dirHandle.name || 'Drive').replace(/[\\/]+/g, '').trim() || 'Drive'
+      setOcrProgress({ done: 0, total: 0, file: '', label: `Indexing Drive — ${folderLabel}` })
 
       const onTextProgress = (count, filename) => {
         setOcrProgress(prev => prev ? { ...prev, done: count, file: filename } : null)
@@ -1491,7 +1492,9 @@ function App() {
             <span className="text-white/50 text-xs" style={{ fontWeight: 300 }}>
               {ocrProgress.label === 'OCR'
                 ? `OCR: ${ocrProgress.done}/${ocrProgress.total} images`
-                : ocrProgress.label || `Indexing: ${ocrProgress.done} files`}
+                : ocrProgress.total > 0
+                  ? `${ocrProgress.label || 'Indexing'}: ${ocrProgress.done}/${ocrProgress.total}`
+                  : `${ocrProgress.label || 'Indexing'}${ocrProgress.done > 0 ? ` · ${ocrProgress.done} files` : ''}`}
             </span>
             {ocrProgress.total > 0 && (
               <div className="w-24 h-1 rounded-full bg-white/10 overflow-hidden">
