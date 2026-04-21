@@ -29,9 +29,11 @@ GROQ_MODEL = "llama-3.1-8b-instant"
 # Cerebras runs the same Llama models with 2x Groq's TPM (60k vs 30k).
 # Different quota pool, so it picks up when Groq is saturated.
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
-# Default/free-tier Cerebras keys only have access to llama3.1-8b.
-# Verified working via direct API test. Matches Groq's primary model.
-CEREBRAS_MODEL = "llama3.1-8b"
+# Two Cerebras tiers: big model first (best quality), small model as backup.
+# Different models = different queue pools, so if Qwen's overloaded we still
+# have Cerebras capacity before falling over to Gemini.
+CEREBRAS_MODEL_BIG = "qwen-3-235b-a22b-instruct-2507"  # 235B params, smart
+CEREBRAS_MODEL_SMALL = "llama3.1-8b"  # 8B, fast and always available
 
 # Gemini exposes an OpenAI-compatible endpoint. Third-tier fallback with its own quota pool.
 # Note: 2.0 Flash is existing-customers-only as of March 2026; 2.5 Flash is available to new accounts.
@@ -166,12 +168,13 @@ def stream_response(question, sources, history=None):
     messages.append({"role": "user", "content": user_content})
 
     # Build provider chain — each has an independent quota pool.
-    # Order: Groq (fastest) → Cerebras (2x Groq's TPM, same Llama models) → Gemini (1M TPM ceiling).
+    # Order: Groq (fastest) → Cerebras-235B (smart) → Cerebras-8B (backup, different queue) → Gemini (ceiling).
     providers = []
     if groq_key:
         providers.append(("Groq", GROQ_URL, groq_key, GROQ_MODEL))
     if cerebras_key:
-        providers.append(("Cerebras", CEREBRAS_URL, cerebras_key, CEREBRAS_MODEL))
+        providers.append(("Cerebras-235B", CEREBRAS_URL, cerebras_key, CEREBRAS_MODEL_BIG))
+        providers.append(("Cerebras-8B", CEREBRAS_URL, cerebras_key, CEREBRAS_MODEL_SMALL))
     if gemini_key:
         providers.append(("Gemini", GEMINI_URL, gemini_key, GEMINI_MODEL))
 
