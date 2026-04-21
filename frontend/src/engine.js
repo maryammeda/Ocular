@@ -38,7 +38,20 @@ async function getMammoth() {
 }
 
 // ── OCR with parallel workers (lazy-loaded) ──────────────
-const OCR_WORKERS = 2
+// Adaptive worker count: scales with CPU but stays conservative for thermal health.
+// Uses roughly half the cores, capped at 4. This gives older machines breathing
+// room (1-2 workers) while letting newer machines be faster (3-4 workers).
+const OCR_WORKERS = (() => {
+  const cores = navigator.hardwareConcurrency || 4
+  if (cores <= 2) return 1
+  if (cores <= 4) return 2
+  if (cores <= 8) return 3
+  return 4
+})()
+// Skip images > 3MB — usually photos, rarely contain useful text
+const MAX_OCR_IMAGE_SIZE = 3 * 1024 * 1024
+// Target max dimension for OCR — reduces CPU work without losing document text
+const OCR_IMAGE_MAX_DIM = 1400
 let _ocrScheduler = null
 let _ocrIdleTimer = null
 async function getOcrScheduler() {
@@ -304,16 +317,20 @@ class SearchEngine {
     for (const { entry, ext, pathPrefix } of imageFiles) {
       try {
         const file = await entry.getFile()
-        if (file.size > MAX_CLIENT_FILE_SIZE) { done++; continue }
-        if (file.size < 5 * 1024 || file.size > 5 * 1024 * 1024) { done++; continue }
+        // Skip too-small (icons/thumbs) and too-large (photos) images
+        if (file.size < 5 * 1024 || file.size > MAX_OCR_IMAGE_SIZE) { done++; onOcrProgress?.(done, total, entry.name); continue }
 
         const filepath = `${pathPrefix}/${entry.name}`
         // Skip unchanged images too
         if (this._isUnchanged(filepath, file.lastModified)) { done++; onOcrProgress?.(done, total, entry.name); continue }
 
+        // Preprocess: resize + greyscale → much less CPU per image
+        const processedCanvas = await preprocessForOcr(file)
+        if (!processedCanvas) { done++; onOcrProgress?.(done, total, entry.name); continue }
+
         const imageData = await fileToDataURL(file)
         const scheduler = await getOcrScheduler()
-        const { data } = await scheduler.addJob('recognize', file)
+        const { data } = await scheduler.addJob('recognize', processedCanvas)
         const content = data.text?.trim() || ''
         const doc = {
           id: filepath, filename: entry.name, filepath,
@@ -568,10 +585,12 @@ class SearchEngine {
 
           if (type === 'image') {
             if (!ocrEnabled) continue
-            if (file.size < 5 * 1024 || file.size > 5 * 1024 * 1024) continue
+            if (file.size < 5 * 1024 || file.size > MAX_OCR_IMAGE_SIZE) continue
+            const processedCanvas = await preprocessForOcr(file)
+            if (!processedCanvas) continue
             const imageData = await fileToDataURL(file)
             const scheduler = await getOcrScheduler()
-            const { data } = await scheduler.addJob('recognize', file)
+            const { data } = await scheduler.addJob('recognize', processedCanvas)
             const content = data.text?.trim() || ''
             const filepath = `dropped/${handle.name}`
             const doc = {
@@ -615,6 +634,36 @@ function fileToDataURL(file) {
     reader.onload = () => resolve(reader.result)
     reader.readAsDataURL(file)
   })
+}
+
+// Preprocess an image for OCR: resize if too large, convert to greyscale.
+// Greyscale + smaller dimensions = dramatically less CPU per OCR pass.
+// Returns a canvas ready for Tesseract.recognize(), or null if image too tiny to OCR.
+async function preprocessForOcr(file) {
+  const bitmap = await createImageBitmap(file).catch(() => null)
+  if (!bitmap) return null
+  const { width, height } = bitmap
+  // Skip images too small to contain readable text (icons, thumbnails)
+  if (width < 100 || height < 100) { bitmap.close?.(); return null }
+  // Compute target dimensions
+  const scale = Math.min(1, OCR_IMAGE_MAX_DIM / Math.max(width, height))
+  const w = Math.round(width * scale)
+  const h = Math.round(height * scale)
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(bitmap, 0, 0, w, h)
+  bitmap.close?.()
+  // Convert to greyscale (reduces Tesseract workload)
+  const imgData = ctx.getImageData(0, 0, w, h)
+  const d = imgData.data
+  for (let i = 0; i < d.length; i += 4) {
+    const grey = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0
+    d[i] = d[i + 1] = d[i + 2] = grey
+  }
+  ctx.putImageData(imgData, 0, 0)
+  return canvas
 }
 
 export const engine = new SearchEngine()
