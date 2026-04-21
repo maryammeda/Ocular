@@ -24,7 +24,12 @@ except ImportError:
 app = FastAPI()
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-MODEL = "llama-3.1-8b-instant"
+GROQ_MODEL = "llama-3.1-8b-instant"
+
+# Gemini exposes an OpenAI-compatible endpoint so the request/stream shape is identical.
+# Used as automatic fallback when Groq is rate-limited.
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+GEMINI_MODEL = "gemini-2.0-flash"
 
 
 class ChatSource(BaseModel):
@@ -67,9 +72,66 @@ def build_context(question, sources):
 User question: {question}"""
 
 
+def _try_provider(url, api_key, model, messages, timeout=9.0):
+    """Attempt to stream from an OpenAI-compatible provider.
+
+    Yields tuples: ('ratelimit', None) if 429, ('error', msg) on other errors,
+    ('token', text) for each streamed content chunk, ('done', None) on completion.
+    """
+    try:
+        with httpx.stream(
+            "POST",
+            url,
+            json={"model": model, "stream": True, "messages": messages},
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            timeout=timeout,
+        ) as response:
+            if response.status_code == 429:
+                response.read()
+                yield ("ratelimit", None)
+                return
+            if response.status_code != 200:
+                response.read()
+                yield ("error", f"API error: {response.status_code}")
+                return
+
+            tokens_received = 0
+            for line in response.iter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    if chunk.get("error"):
+                        err = chunk["error"]
+                        yield ("error", err.get("message") or str(err))
+                        return
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    text = delta.get("content", "")
+                    if text:
+                        tokens_received += 1
+                        yield ("token", text)
+                except (json.JSONDecodeError, IndexError, KeyError):
+                    continue
+
+            if tokens_received == 0:
+                yield ("error", "empty_response")
+                return
+            yield ("done", None)
+    except Exception as e:
+        msg = str(e)
+        if "429" in msg or "quota" in msg.lower():
+            yield ("ratelimit", None)
+        else:
+            yield ("error", msg)
+
+
 def stream_response(question, sources, history=None):
-    api_key = os.getenv("GROQ_API_KEY", "").strip()
-    if not api_key:
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not groq_key and not gemini_key:
         yield f"event: error\ndata: {json.dumps({'message': 'Ocular AI is not configured yet.'})}\n\n"
         return
 
@@ -77,7 +139,7 @@ def stream_response(question, sources, history=None):
         yield f"event: error\ndata: {json.dumps({'message': 'No relevant documents found. Index some files first.'})}\n\n"
         return
 
-    sources = _top_sources(question, sources, top_n=8)
+    sources = _top_sources(question, sources, top_n=6)
 
     source_list = [{"filename": s["filename"], "filepath": s["filepath"]} for s in sources]
     yield f"event: sources\ndata: {json.dumps(source_list)}\n\n"
@@ -90,70 +152,40 @@ def stream_response(question, sources, history=None):
         messages.extend(history)
     messages.append({"role": "user", "content": user_content})
 
-    try:
-        for attempt in range(3):
-            with httpx.stream(
-                "POST",
-                GROQ_URL,
-                json={
-                    "model": MODEL,
-                    "stream": True,
-                    "messages": messages,
-                },
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                timeout=9.0,  # Stay under Vercel Hobby's 10s function limit
-            ) as response:
-                if response.status_code == 429 and attempt < 2:
-                    response.read()
-                    time.sleep(2 * (attempt + 1))
-                    continue
-                if response.status_code != 200:
-                    response.read()
-                    yield f"event: error\ndata: {json.dumps({'message': f'API error: {response.status_code}'})}\n\n"
-                    return
+    # Build provider chain — Groq first (fast), Gemini fallback (different quota pool).
+    providers = []
+    if groq_key:
+        providers.append(("Groq", GROQ_URL, groq_key, GROQ_MODEL))
+    if gemini_key:
+        providers.append(("Gemini", GEMINI_URL, gemini_key, GEMINI_MODEL))
 
-                tokens_received = 0
-                for line in response.iter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data = line[6:]
-                    if data.strip() == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data)
-                        # Surface any error the model returns inside the payload
-                        if chunk.get("error"):
-                            err = chunk["error"]
-                            msg = err.get("message") or str(err)
-                            yield f"event: error\ndata: {json.dumps({'message': f'API error: {msg}'})}\n\n"
-                            return
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        text = delta.get("content", "")
-                        if text:
-                            tokens_received += 1
-                            yield f"event: token\ndata: {json.dumps({'text': text})}\n\n"
-                    except (json.JSONDecodeError, IndexError, KeyError):
-                        continue
-
-                if tokens_received == 0:
-                    yield f"event: error\ndata: {json.dumps({'message': 'The AI returned an empty response. The model may be overloaded or rate-limited — try again in a moment.'})}\n\n"
-                    return
-
+    last_error = None
+    for provider_name, url, key, model in providers:
+        any_token = False
+        for event_type, payload in _try_provider(url, key, model, messages):
+            if event_type == "token":
+                any_token = True
+                yield f"event: token\ndata: {json.dumps({'text': payload})}\n\n"
+            elif event_type == "done":
                 yield "event: done\ndata: {}\n\n"
                 return
+            elif event_type == "ratelimit":
+                # Try next provider silently
+                break
+            elif event_type == "error":
+                last_error = payload
+                # If we already streamed tokens from this provider, don't fail over — surface error.
+                if any_token:
+                    yield f"event: error\ndata: {json.dumps({'message': payload})}\n\n"
+                    return
+                # Otherwise try next provider
+                break
 
-        yield f"event: error\ndata: {json.dumps({'message': 'Rate limited. Please wait a moment and try again.'})}\n\n"
-
-    except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg or "quota" in error_msg.lower():
-            error_msg = "Rate limited. Please wait a moment and try again."
-        elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
-            error_msg = "The AI took too long to respond. Try asking a shorter question or try again."
-        yield f"event: error\ndata: {json.dumps({'message': error_msg})}\n\n"
+    # All providers exhausted
+    final_msg = "Both AI providers are rate-limited right now — please try again in a minute." if len(providers) > 1 else "Rate limited. Please wait a moment and try again."
+    if last_error and last_error != "empty_response":
+        final_msg = last_error
+    yield f"event: error\ndata: {json.dumps({'message': final_msg})}\n\n"
 
 
 @app.post("/api/chat")
