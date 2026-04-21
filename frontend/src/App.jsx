@@ -1398,7 +1398,7 @@ function App() {
                 <button onClick={() => setScanPanelOpen(false)} className="text-white/40 hover:text-white transition"><X size={18} /></button>
               </div>
 
-              <div className="flex-1 p-8 pt-4 space-y-3">
+              <div className="flex-1 p-8 pt-4 space-y-3 overflow-y-auto">
                 {[
                   { icon: FolderOpen, title: 'Scan Folder', desc: 'Choose a folder on your computer to index', action: handleScan },
                   { icon: Cloud, title: 'Select from Drive', desc: 'Pick files or folders from Google Drive', action: handleQuickScan },
