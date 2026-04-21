@@ -1441,7 +1441,8 @@ function App() {
                 <div className="space-y-3 pt-4">
                   {[
                     { label: 'OCR (Image Scanning)', value: ocrEnabled, onChange: (v) => { setOcrEnabled(v); localStorage.setItem('ocular_ocr_enabled', v) } },
-                    { label: 'Include Shared Files', value: includeShared, onChange: (v) => { setIncludeShared(v); localStorage.setItem('ocular_include_shared', v) } },
+                    // 'Include Shared Files' hidden — only used by Full Drive Scan which is hidden.
+                    // { label: 'Include Shared Files', value: includeShared, onChange: (v) => { setIncludeShared(v); localStorage.setItem('ocular_include_shared', v) } },
                   ].map(({ label, value, onChange }) => (
                     <div key={label} className="flex items-center justify-between px-2">
                       <span className="text-sm text-white/50" style={{ fontWeight: 300 }}>{label}</span>
