@@ -53,15 +53,39 @@ class ChatRequest(BaseModel):
     history: list[dict] = []
 
 
+_STOPWORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "can", "may", "might", "about", "above", "after", "again",
+    "all", "also", "am", "and", "any", "at", "because", "before", "between",
+    "both", "but", "by", "down", "during", "each", "few", "for", "from",
+    "further", "get", "got", "he", "her", "here", "hers", "herself", "him",
+    "himself", "his", "how", "i", "if", "in", "into", "it", "its", "itself",
+    "just", "me", "more", "most", "my", "myself", "no", "nor", "not", "now",
+    "of", "off", "on", "once", "only", "or", "other", "our", "ours", "out",
+    "over", "own", "same", "she", "so", "some", "such", "than", "that",
+    "their", "theirs", "them", "themselves", "then", "there", "these", "they",
+    "this", "those", "through", "to", "too", "under", "until", "up", "very",
+    "we", "what", "when", "where", "which", "while", "who", "whom", "why",
+    "with", "you", "your", "yours", "tell", "find", "show", "give",
+}
+
+
 def _top_sources(question: str, sources: list, top_n: int = 6) -> list:
-    """Score sources by keyword relevance and return the top N most relevant."""
-    words = [w.lower() for w in question.split() if len(w) > 3]
+    """Score sources by keyword relevance and return the top N most relevant.
+    Uses length > 1 filter + stopwords — this keeps important short tokens
+    like numbers ('42', '2025') that were being silently dropped before."""
+    words = [w.lower().strip(".,!?;:\"'") for w in question.split()]
+    words = [w for w in words if len(w) > 1 and w not in _STOPWORDS]
     if not words:
         return sources[:top_n]
     scored = []
     for s in sources:
         content_lower = (s.get("content") or "").lower()
+        filename_lower = (s.get("filename") or "").lower()
+        # Filename matches are weighted 3x — strong signal of relevance
         score = sum(content_lower.count(w) for w in words)
+        score += sum(filename_lower.count(w) for w in words) * 3
         scored.append((score, s))
     scored.sort(key=lambda x: x[0], reverse=True)
     relevant = [s for sc, s in scored if sc > 0]
