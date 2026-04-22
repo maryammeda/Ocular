@@ -1373,7 +1373,6 @@ function App() {
               {[
                 { label: 'Privacy', href: '/privacy.html' },
                 { label: 'Terms', href: '/terms.html' },
-                { label: 'GitHub', href: 'https://github.com/maryammeda/Ocular' },
               ].map(link => (
                 <a key={link.label} href={link.href} target="_blank" rel="noopener noreferrer"
                   className="text-xs text-white/[0.38] hover:text-white/70 transition-colors" style={{ fontWeight: 300 }}>
