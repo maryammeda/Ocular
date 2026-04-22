@@ -1365,21 +1365,10 @@ function App() {
       <footer className="bg-black px-6 pb-10 pt-20">
         <div className="max-w-7xl mx-auto">
           <div className="h-px w-full mb-8" style={{ background: 'rgba(255,255,255,0.12)' }} />
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center justify-center">
             <p className="text-white/[0.38] text-xs" style={{ fontWeight: 300 }}>
               &copy; 2026 Ocular. All rights reserved.
             </p>
-            <div className="flex items-center gap-6">
-              {[
-                { label: 'Privacy', href: '/privacy.html' },
-                { label: 'Terms', href: '/terms.html' },
-              ].map(link => (
-                <a key={link.label} href={link.href} target="_blank" rel="noopener noreferrer"
-                  className="text-xs text-white/[0.38] hover:text-white/70 transition-colors" style={{ fontWeight: 300 }}>
-                  {link.label}
-                </a>
-              ))}
-            </div>
           </div>
         </div>
       </footer>
