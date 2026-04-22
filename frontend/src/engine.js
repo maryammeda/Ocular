@@ -514,14 +514,42 @@ class SearchEngine {
     if (!words.length) return []
 
     const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    const pattern = new RegExp(`\\b(${escaped.join('|')})`, 'gi')
-    const results = []
 
+    // IDF weighting: rare keywords weigh much more than common ones.
+    // Without this, "concept" (appears in 50 files) drowns out "gestation"
+    // (appears in 1). Classic RAG retrieval failure mode.
+    const totalDocs = this.documents.length || 1
+    const perWordRegex = words.map(w => new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'gi'))
+    const idf = words.map((w, i) => {
+      let docsContaining = 0
+      for (const d of this.documents) {
+        const haystack = (d.content || '') + ' ' + (d.filename || '')
+        if (perWordRegex[i].test(haystack)) docsContaining++
+        perWordRegex[i].lastIndex = 0
+      }
+      // log((N+1)/(df+1)) + 1 — smoothed IDF, never zero, unbounded above
+      return Math.log((totalDocs + 1) / (docsContaining + 1)) + 1
+    })
+
+    const results = []
     for (const doc of this.documents) {
       const content = doc.content || ''
-      const contentMatches = content.match(pattern)
-      const filenameMatches = doc.filename.match(pattern)
-      const score = (contentMatches?.length || 0) + (filenameMatches?.length || 0) * 3
+      const filenameLower = (doc.filename || '').toLowerCase()
+      const contentLower = content.toLowerCase()
+      let score = 0
+      for (let i = 0; i < words.length; i++) {
+        const re = perWordRegex[i]
+        re.lastIndex = 0
+        const contentCount = (contentLower.match(re) || []).length
+        re.lastIndex = 0
+        const filenameCount = (filenameLower.match(re) || []).length
+        re.lastIndex = 0
+        // Log-scaled TF * IDF — classic TF-IDF. log(1+count) dampens high-count
+        // dominance so a file with 20 matches of a common word doesn't drown
+        // out a file with 2 matches of a rare word. Filename boost stays at 3x.
+        if (contentCount > 0) score += Math.log(1 + contentCount) * idf[i]
+        if (filenameCount > 0) score += Math.log(1 + filenameCount) * idf[i] * 3
+      }
       if (score > 0) {
         results.push({
           filename: doc.filename, filepath: doc.filepath,
