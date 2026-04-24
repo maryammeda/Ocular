@@ -1,150 +1,121 @@
-# Ocular - AI-Powered Personal Search Engine
+# Ocular
+
+**Live:** [ocular-app.tech](https://ocular-app.tech)
+
+A personal AI search engine that reads every word inside your files — PDFs, screenshots, Google Docs, scans, receipts — and lets you chat with them. 100% client-side. Nothing leaves your device.
 
 ![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi)
-![SQLite](https://img.shields.io/badge/SQLite-07405E?style=flat&logo=sqlite)
 ![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB)
 ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white)
 
-## The Problem
-University students generate thousands of files, PDFs, and screenshots of lecture whiteboards. While standard OS search engines (like Windows Search or Mac Spotlight) can find filenames, they are completely blind to the actual content locked inside images and screenshots. Data gets lost.
-
-## The Solution
-**Ocular** is a local search engine designed to give your computer "eyes."
-It uses an automated ETL pipeline and **Tesseract OCR** to read, extract, and index text directly from images, screenshots, PDFs, and documents. Paired with **SQLite FTS5** and a client-side **IndexedDB** engine, Ocular delivers sub-millisecond, content-based search results with contextual snippets and keyword highlighting. An AI chat assistant powered by **Groq LLaMA 3.3 70B** lets you ask questions about your documents with cited, source-backed answers.
-
 ---
 
-## Core Architecture & Features
+## Why
 
-### Search & Indexing
-*   **Dual Search Architecture:** Server-side SQLite FTS5 for production queries and client-side IndexedDB for offline, browser-based search — both running in parallel.
-*   **High-Performance Querying:** FTS5 bypasses standard row-scanning for instant retrieval with keyword highlighting, match counting, and relevance ranking.
-*   **Search History:** Persisted search queries with dropdown suggestions, deduplication, and individual deletion.
+Your OS search bar is blind to what's inside your files. It finds filenames, not content. The lecture slide you screenshotted last month? The invoice from March? The PDF you saved and forgot about? Invisible to regular search.
 
-### Computer Vision & Content Extraction
-*   **OCR Pipeline:** Tesseract OCR (server-side via pytesseract, client-side via Tesseract.js with a 2-worker pool) extracts text from `.png`, `.jpg`, and `.jpeg` images.
-*   **Multi-Format Support:** Processes text files (`.txt`, `.md`, `.csv`), documents (`.pdf`, `.docx`), and images — all indexed and searchable.
-*   **Smart Image Optimization:** Skips images under 30 KB, auto-resizes large images, and converts to greyscale for faster OCR processing.
+Ocular reads all of it — and lets you ask questions about it.
 
-### AI Chat Assistant
-*   **RAG Pipeline:** Retrieves relevant documents via FTS5, scores and merges with client-side sources, then streams answers from Groq LLaMA 3.3 70B.
-*   **Source Citations:** Every answer cites the specific files it draws from as `[filename.ext]`.
-*   **Multi-Conversation:** Maintains separate chat threads with history, persisted to localStorage.
-*   **Streaming Responses:** Server-Sent Events deliver tokens in real time.
+## What it does
 
-### File System Integration
-*   **Multithreaded Crawler:** Uses Python `ThreadPoolExecutor` to rapidly crawl the file system, bypassing system folders and optimizing throughput.
-*   **Real-Time File Watcher:** Automatically re-indexes files on create, modify, or delete using `watchdog` with a 2-second debounce — no manual re-scans needed.
-*   **Drag & Drop Scanning:** Drop files or folders directly onto the app to index them instantly.
-*   **Folder Picker:** Uses the File System Access API for native folder selection.
+- **Search everything by content.** Screenshots, PDFs, DOCX, Google Docs/Sheets, images — the text inside them, not just filenames.
+- **Chat with your files.** Ask natural questions and get cited answers streamed back live. Every claim links to the source document.
+- **Index from anywhere.** Any folder on your computer, specific files from Google Drive via Picker, or your entire Drive via Drive for Desktop at native filesystem speed.
+- **100% private.** Runs entirely in your browser. No accounts, no uploads, no server storing your files.
 
-### Google Drive Integration
-*   **OAuth2 Authentication:** Connects to Google Drive via Google Identity Services.
-*   **Workspace Export:** Automatically exports Google Docs to plain text and Sheets to CSV before indexing.
-*   **Batch Processing:** Downloads and processes files in batches with per-file error handling and retry logic.
-*   **Supported Types:** PDFs, Docs, Sheets, Word documents, and images (with automatic OCR).
+## Architecture
 
-### Frontend
-*   **Glassmorphism UI:** Modern frosted-glass design with backdrop blur, animated gradients, and Framer Motion transitions.
-*   **Document Preview:** Hover to preview images as thumbnails or view full document content with keyword highlighting.
-*   **Toast Notifications:** Auto-dismissing success/error messages for scan progress and results.
+### Frontend (client-side, where everything actually happens)
+- **React + Vite** — UI and build tooling
+- **IndexedDB** — persistent document index, built and queried in the browser
+- **Tesseract.js (WASM)** — OCR on images with adaptive-worker pipelined parallelism
+- **File System Access API** — direct folder access without uploads
+- **TF-IDF retrieval** — keyword search ranked by log-scaled term frequency × inverse document frequency
+- **Google Drive Picker + OAuth2** — for selective cloud indexing
 
----
+### Backend (serverless chat only)
+- **FastAPI on Vercel** — stateless `/api/chat` endpoint
+- **Multi-provider LLM fallback** — Groq LLaMA 3.1 8B primary, Cerebras Qwen 3 235B + Cerebras Llama 8B + Gemini 2.5 Flash fallbacks
+- **Streaming SSE** — tokens streamed as they're generated
+- **RAG retrieval** — top-K most relevant document chunks injected as context per query
 
-## Tech Stack
+### Why 100% client-side for indexing?
+Because user files never need to leave the device. OCR, extraction, and storage all happen in the browser. The chat endpoint only ever sees the specific snippets needed to answer a single question — never the full index, never the raw files.
 
-| Layer | Technologies |
-|-------|-------------|
-| **Backend** | Python, FastAPI, Uvicorn |
-| **Database** | SQLite (FTS5), IndexedDB (client-side) |
-| **AI** | Groq LLaMA 3.3 70B (via OpenAI-compatible API) |
-| **Content Extraction** | Tesseract OCR, pytesseract, Tesseract.js, pdfplumber, python-docx, Pillow |
-| **File Watching** | watchdog |
-| **Frontend** | React 19, Vite, TailwindCSS, Framer Motion |
-| **Icons** | Lucide React |
-| **Client-Side Processing** | pdfjs-dist, mammoth, Tesseract.js |
-| **Cloud** | Google Drive API (OAuth2) |
-| **Deployment** | Vercel (frontend + serverless chat) |
+## Scan methods
 
----
+1. **Local folder scan** — pick any folder; Ocular indexes everything with supported extensions (PDFs, DOCX, images, text).
+2. **Google Drive Picker** — pick specific files from Drive. Uses `drive.file` scope so there's no "unverified app" warning.
+3. **Drive for Desktop** — point Ocular at your `G:\My Drive` (or Mac equivalent) folder. Drive for Desktop syncs files locally, and Ocular indexes them as normal local files. Fastest method, zero OAuth, zero scope concerns.
 
-## Getting Started
+## Running locally
 
 ### Prerequisites
 - Python 3.9+
 - Node.js 18+
-- [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) installed and on PATH
+- [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) (for server-side dev; browser uses Tesseract.js)
 
-### Installation
+### Setup
 
 ```bash
-# Clone the repository
 git clone https://github.com/maryammeda/Ocular.git
 cd Ocular
 
-# Set up Python virtual environment
+# Backend
 python -m venv venv
-source venv/bin/activate   # or venv\Scripts\activate on Windows
-
-# Install backend dependencies
+source venv/bin/activate    # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 
-# Install frontend dependencies
-cd frontend
-npm install
-cd ..
+# Frontend
+cd frontend && npm install && cd ..
 ```
 
-### Configuration
+### Environment variables
 
-**Backend** — create `.env` in the project root:
+Create `.env` in the project root:
 ```env
-GROQ_API_KEY=your_groq_api_key_here
+GROQ_API_KEY=your_groq_key
+CEREBRAS_API_KEY=your_cerebras_key     # optional fallback
+GEMINI_API_KEY=your_gemini_key         # optional fallback
 ```
 
-**Frontend** — create `frontend/.env`:
+Create `frontend/.env`:
 ```env
-VITE_GOOGLE_CLIENT_ID=your_google_client_id
+VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id
 VITE_GOOGLE_API_KEY=your_google_api_key
 ```
 
-Get a free Groq API key at [console.groq.com](https://console.groq.com).
+Free API keys:
+- Groq: [console.groq.com](https://console.groq.com)
+- Cerebras: [cloud.cerebras.ai](https://cloud.cerebras.ai)
+- Gemini: [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 
-### Running
+### Run
 
 ```bash
-# Start both backend and frontend
 python start.py
 ```
 
-This launches the FastAPI backend on `http://localhost:8000` and the React frontend on `http://localhost:5173`.
-
----
+Starts FastAPI backend on `:8000` and Vite dev server on `:5173`.
 
 ## Deployment
 
-### Vercel (Frontend + Chat)
-The project includes a `vercel.json` that deploys the React frontend and the serverless chat endpoint (`api/chat.py`). Set `GROQ_API_KEY` in your Vercel environment variables.
+The production site (`ocular-app.tech`) is deployed on Vercel. `vercel.json` configures the frontend build and serverless chat endpoint. Set the same env vars listed above in Vercel's project settings.
 
-### Self-Hosted (Full Stack)
-Run `python start.py` on your server. The backend provides file scanning, search, preview, and chat — the frontend connects to it automatically.
+## Tech stack summary
 
----
+| Layer | Tech |
+|---|---|
+| Frontend | React, Vite, TailwindCSS, Framer Motion |
+| Client storage | IndexedDB |
+| OCR | Tesseract.js (WASM) |
+| File access | File System Access API |
+| Backend | FastAPI (Vercel serverless) |
+| LLM providers | Groq, Cerebras, Gemini (multi-tier fallback) |
+| Auth (optional) | Google OAuth2 + Picker API |
 
-## Roadmap
+## License
 
-- [x] Phase 1: Multithreaded Crawler & OCR Pipeline
-- [x] Phase 2: SQLite FTS5 Database
-- [x] Phase 3: Headless FastAPI Architecture
-- [x] Phase 4: Interactive React Frontend with Glassmorphism UI
-- [x] Phase 5: Real-Time File Watcher (auto re-indexing)
-- [x] Phase 6: Google Drive Integration (OAuth2 + batch processing)
-- [x] Phase 7: Client-Side IndexedDB Engine (offline search)
-- [x] Phase 8: Document Preview & Search History
-- [x] Phase 9: AI Chat Assistant (RAG + Groq LLaMA 3.3)
-
----
-
-> *"Building a Second Brain, one pixel at a time."*
+MIT — see [LICENSE](./LICENSE).
