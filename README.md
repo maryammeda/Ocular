@@ -12,6 +12,19 @@ A personal AI search engine that reads every word inside your files — PDFs, sc
 
 ---
 
+## Screenshots
+
+### Landing
+![Main interface with the particle-effect Ocular logo and live indexed document count](docs/screenshots/landing.png)
+
+### Search
+![Content search showing 14 hits for "bio" across DOCX and PDF documents with file paths and snippets](docs/screenshots/search.png)
+
+### Chat with citations
+![Ocular AI panel answering a question about gestation with cited content from BIOL-102 notes](docs/screenshots/chat.png)
+
+---
+
 ## Why
 
 Your OS search bar is blind to what's inside your files. It finds filenames, not content. The lecture slide you screenshotted last month? The invoice from March? The PDF you saved and forgot about? Invisible to regular search.
